@@ -1,13 +1,21 @@
 # opencode-event-bridge
 
-To install dependencies:
+Linear webhook bridge deployed with Alchemy on Cloudflare Workers.
+
+Install dependencies:
 
 ```bash
 bun install
 ```
 
-To run:
+Run checks:
 
 ```bash
-bun run index.ts
+bun run check
+```
+
+Deploy with Alchemy:
+
+```bash
+bunx alchemy deploy
 ```

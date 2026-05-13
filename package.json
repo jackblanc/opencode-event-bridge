@@ -2,7 +2,7 @@
   "name": "opencode-event-bridge",
   "private": true,
   "type": "module",
-  "module": "index.ts",
+  "module": "alchemy.run.ts",
   "scripts": {
     "prepare": "lefthook install || true",
     "typecheck": "tsc --noEmit",
@@ -11,7 +11,7 @@
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:fix": "oxfmt --write .",
-    "check": "bun run typecheck && bun run lint && bun run format"
+    "check": "bun run typecheck && bun run lint && bun run format && bun run knip"
   },
   "dependencies": {
     "@effect/platform-bun": "4.0.0-beta.66",
