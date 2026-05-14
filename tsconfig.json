@@ -1,4 +1,5 @@
 {
+  "$schema": "./node_modules/@effect/language-service/schema.json",
   "compilerOptions": {
     // Environment setup & latest features
     "lib": ["ESNext"],
@@ -23,6 +24,8 @@
     "noImplicitOverride": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": true
+    "noPropertyAccessFromIndexSignature": true,
+
+    "plugins": [{ "name": "@effect/language-service" }]
   }
 }

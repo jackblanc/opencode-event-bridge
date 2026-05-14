@@ -43,7 +43,7 @@ const makeCallbackUrl = (request: {
   Effect.gen(function* () {
     const host = request.headers["host"];
     if (host === undefined) {
-      return yield* Effect.fail(new LinearOAuthUpstreamError({ reason: "InvalidCallbackUrl" }));
+      return yield* new LinearOAuthUpstreamError({ reason: "InvalidCallbackUrl" });
     }
     const protocol = request.headers["x-forwarded-proto"] ?? "https";
     return new URL("/api/oauth/callback", `${protocol}://${host}`).toString();
@@ -105,10 +105,10 @@ const decodeAndValidateLinearWebhookPayload = (
     );
 
     if (linearWebhookPayload.type !== linearEventHeader) {
-      return yield* Effect.fail(new LinearWebhookBadRequest({ reason: "EventMismatch" }));
+      return yield* new LinearWebhookBadRequest({ reason: "EventMismatch" });
     }
     if (Math.abs(now - linearWebhookPayload.webhookTimestamp) > 60_000) {
-      return yield* Effect.fail(new LinearWebhookUnauthorized({ reason: "StaleTimestamp" }));
+      return yield* new LinearWebhookUnauthorized({ reason: "StaleTimestamp" });
     }
 
     return linearWebhookPayload;
@@ -139,7 +139,7 @@ const verifySignature = (
     );
 
     if (!valid) {
-      return yield* Effect.fail(new LinearWebhookUnauthorized({ reason: "InvalidSignature" }));
+      return yield* new LinearWebhookUnauthorized({ reason: "InvalidSignature" });
     }
   });
 
@@ -181,7 +181,7 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
             const storedState = yield* oauthState.get(query.state).pipe(Effect.orDie);
             yield* oauthState.delete(query.state).pipe(Effect.orDie);
             if (storedState === null) {
-              return yield* Effect.fail(new LinearOAuthBadRequest({ reason: "InvalidState" }));
+              return yield* new LinearOAuthBadRequest({ reason: "InvalidState" });
             }
 
             const clientId = yield* oauthClientId;
@@ -207,7 +207,14 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
                 () => new LinearOAuthUpstreamError({ reason: "InvalidTokenResponse" }),
               ),
             );
-            yield* orgAuth.put(encoded.organizationId, JSON.stringify(encoded)).pipe(Effect.orDie);
+            const serialized = yield* Schema.encodeEffect(
+              Schema.fromJsonString(LinearOrgAuthRecord),
+            )(encoded).pipe(
+              Effect.mapError(
+                () => new LinearOAuthUpstreamError({ reason: "InvalidTokenResponse" }),
+              ),
+            );
+            yield* orgAuth.put(encoded.organizationId, serialized).pipe(Effect.orDie);
 
             return HttpServerResponse.fromWeb(
               new Response("Linear app installed. You can close this tab."),
