@@ -4,6 +4,7 @@ import * as Stream from "effect/Stream";
 
 import type { LinearWebhookPayload } from "./webhook-payload.ts";
 
+import { LinearOrgAuthStore } from "./oauth-store.ts";
 import { LinearWebhookQueue } from "./webhook-queue.ts";
 
 export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebhookProcessor>()(
@@ -11,6 +12,8 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
   { main: import.meta.filename },
   Effect.gen(function* () {
     const queueResource = yield* LinearWebhookQueue;
+    const orgAuthResource = yield* LinearOrgAuthStore;
+    yield* Cloudflare.KVNamespace.bind(orgAuthResource);
 
     yield* Cloudflare.messages<LinearWebhookPayload>(queueResource).subscribe((stream) =>
       Stream.runForEach(stream, (msg) =>
@@ -22,5 +25,5 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
         }),
       ),
     );
-  }).pipe(Effect.provide(Cloudflare.QueueEventSourceLive)),
+  }).pipe(Effect.provide([Cloudflare.KVNamespaceBindingLive, Cloudflare.QueueEventSourceLive])),
 ) {}

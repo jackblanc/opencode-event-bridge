@@ -20,6 +20,27 @@ export class LinearWebhookUnauthorized extends Schema.TaggedErrorClass<LinearWeb
   { httpApiStatus: 401 },
 ) {}
 
+export class LinearOAuthBadRequest extends Schema.TaggedErrorClass<LinearOAuthBadRequest>()(
+  "LinearOAuthBadRequest",
+  {
+    reason: Schema.Literal("InvalidState"),
+  },
+  { httpApiStatus: 400 },
+) {}
+
+export class LinearOAuthUpstreamError extends Schema.TaggedErrorClass<LinearOAuthUpstreamError>()(
+  "LinearOAuthUpstreamError",
+  {
+    reason: Schema.Literals([
+      "InvalidCallbackUrl",
+      "LinearRequestFailed",
+      "InvalidTokenResponse",
+      "InvalidViewerResponse",
+    ]),
+  },
+  { httpApiStatus: 502 },
+) {}
+
 const LinearWebhookReceiverResult = Schema.Struct({
   queued: Schema.Boolean,
 }).pipe(HttpApiSchema.status("OK"));
@@ -34,6 +55,21 @@ const receiveLinearWebhook = HttpApiEndpoint.post("receiveLinearWebhook", "/api/
   success: LinearWebhookReceiverResult,
 });
 
-class LinearWebhookGroup extends HttpApiGroup.make("LinearWebhook").add(receiveLinearWebhook) {}
+const authorizeLinearOAuth = HttpApiEndpoint.get("authorizeLinearOAuth", "/api/oauth/authorize", {
+  error: [LinearOAuthUpstreamError],
+});
+
+const completeLinearOAuth = HttpApiEndpoint.get("completeLinearOAuth", "/api/oauth/callback", {
+  query: {
+    code: Schema.String,
+    state: Schema.String,
+  },
+  error: [LinearOAuthBadRequest, LinearOAuthUpstreamError],
+});
+
+class LinearWebhookGroup extends HttpApiGroup.make("LinearWebhook")
+  .add(receiveLinearWebhook)
+  .add(authorizeLinearOAuth)
+  .add(completeLinearOAuth) {}
 
 export class LinearWebhookApi extends HttpApi.make("LinearWebhookApi").add(LinearWebhookGroup) {}

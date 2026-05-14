@@ -13,7 +13,27 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const receiver = yield* LinearWebhookReceiver;
-    yield* LinearWebhookProcessor;
+    const tunnel = yield* Cloudflare.Tunnel("OpenCodeTunnel", {
+      ingress: [{ service: "http://localhost:4096" }],
+    });
+    const service = yield* Cloudflare.VpcService("OpenCodeVpcService", {
+      httpPort: 4096,
+      host: {
+        hostname: "localhost",
+        resolverNetwork: { tunnelId: tunnel.tunnelId },
+      },
+    });
+    const processor = yield* LinearWebhookProcessor;
+
+    yield* processor.bind("OpenCodeVpcService", {
+      bindings: [
+        {
+          type: "vpc_service",
+          name: "OPENCODE",
+          serviceId: service.serviceId,
+        },
+      ],
+    });
 
     return receiver.url;
   }),
