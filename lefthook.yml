@@ -11,6 +11,7 @@ pre-commit:
 
     - name: format
       glob: "*.{ts,tsx,js,jsx,json,md,yml,yaml,css}"
+      exclude: "pnpm-lock.yaml"
       run: pnpm exec oxfmt --write {staged_files}
       stage_fixed: true
 

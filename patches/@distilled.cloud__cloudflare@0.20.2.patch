@@ -1,5 +1,5 @@
 diff --git a/lib/services/workers.d.ts b/lib/services/workers.d.ts
-index dcb0a37c6a7eeac27d20aade1454b876fbd5540d..ddeacb624e1390dcfc0d8d8bf2f6b3e1b20c2e4e 100644
+index dcb0a37c6a7eeac27d20aade1454b876fbd5540d..a6ff8015796a6844b87320657562d763e5e975ab 100644
 --- a/lib/services/workers.d.ts
 +++ b/lib/services/workers.d.ts
 @@ -480,6 +480,10 @@ export interface GetBetaWorkerVersionResponse {
@@ -44,32 +44,16 @@ index dcb0a37c6a7eeac27d20aade1454b876fbd5540d..ddeacb624e1390dcfc0d8d8bf2f6b3e1
      /** The name used to identify the script. */
      id?: string | null;
      /** Date indicating targeted support in the Workers runtime. Backwards incompatible fixes to the runtime following this date will not affect this Worker. */
-@@ -2212,23 +2224,7 @@ export interface PutScriptResponse {
+@@ -2212,7 +2224,7 @@ export interface PutScriptResponse {
          } | null;
      } | null;
      /** Configuration for [Smart Placement](https://developers.cloudflare.com/workers/configuration/smart-placement). Specify either mode for Smart Placement, or one of region/hostname/host for targeted place */
 -    placement?: {
--        mode: "smart";
--        lastAnalyzedAt?: string | null;
--        status?: "SUCCESS" | "UNSUPPORTED_APPLICATION" | "INSUFFICIENT_INVOCATIONS" | null;
--    } | {
--        region: string;
--        lastAnalyzedAt?: string | null;
--        status?: "SUCCESS" | "UNSUPPORTED_APPLICATION" | "INSUFFICIENT_INVOCATIONS" | null;
--    } | {
--        hostname: string;
--        lastAnalyzedAt?: string | null;
--        status?: "SUCCESS" | "UNSUPPORTED_APPLICATION" | "INSUFFICIENT_INVOCATIONS" | null;
--    } | {
--        host: string;
--        lastAnalyzedAt?: string | null;
--        status?: "SUCCESS" | "UNSUPPORTED_APPLICATION" | "INSUFFICIENT_INVOCATIONS" | null;
--    } | null;
-+    placement?: unknown | null;
-     /** @deprecated */
-     placementMode?: "smart" | null;
-     /** @deprecated */
-@@ -2934,6 +2930,10 @@ export interface GetScriptScriptAndVersionSettingResponse {
++    placement?: {} | {
+         mode: "smart";
+         lastAnalyzedAt?: string | null;
+         status?: "SUCCESS" | "UNSUPPORTED_APPLICATION" | "INSUFFICIENT_INVOCATIONS" | null;
+@@ -2934,6 +2946,10 @@ export interface GetScriptScriptAndVersionSettingResponse {
          service: string;
          type: "service";
          environment?: string | null;
@@ -81,7 +65,7 @@ index dcb0a37c6a7eeac27d20aade1454b876fbd5540d..ddeacb624e1390dcfc0d8d8bf2f6b3e1
          name: string;
          part: string;
 diff --git a/lib/services/workers.js b/lib/services/workers.js
-index 392116f4ab3e578ee010a310cc31c86f76611c5e..bbce672c84bd0909777c1d9927056100a98cda78 100644
+index 392116f4ab3e578ee010a310cc31c86f76611c5e..fb4b50ffdf922847221589cb17175759eed2d178 100644
 --- a/lib/services/workers.js
 +++ b/lib/services/workers.js
 @@ -605,6 +605,15 @@ export const GetBetaWorkerVersionResponse =
@@ -141,84 +125,15 @@ index 392116f4ab3e578ee010a310cc31c86f76611c5e..bbce672c84bd0909777c1d9927056100
      id: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
      compatibilityDate: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
      compatibilityFlags: Schema.optional(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
-@@ -3750,75 +3777,7 @@ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
-         })),
+@@ -3816,6 +3843,7 @@ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+                 lastAnalyzedAt: "last_analyzed_at",
+                 status: "status",
+             })),
++            Schema.Struct({}),
+         ]),
          Schema.Null,
      ])),
--    placement: Schema.optional(Schema.Union([
--        Schema.Union([
--            Schema.Struct({
--                mode: Schema.Literal("smart"),
--                lastAnalyzedAt: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
--                status: Schema.optional(Schema.Union([
--                    Schema.Literals([
--                        "SUCCESS",
--                        "UNSUPPORTED_APPLICATION",
--                        "INSUFFICIENT_INVOCATIONS",
--                    ]),
--                    Schema.Null,
--                ])),
--            }).pipe(Schema.encodeKeys({
--                mode: "mode",
--                lastAnalyzedAt: "last_analyzed_at",
--                status: "status",
--            })),
--            Schema.Struct({
--                region: Schema.String,
--                lastAnalyzedAt: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
--                status: Schema.optional(Schema.Union([
--                    Schema.Literals([
--                        "SUCCESS",
--                        "UNSUPPORTED_APPLICATION",
--                        "INSUFFICIENT_INVOCATIONS",
--                    ]),
--                    Schema.Null,
--                ])),
--            }).pipe(Schema.encodeKeys({
--                region: "region",
--                lastAnalyzedAt: "last_analyzed_at",
--                status: "status",
--            })),
--            Schema.Struct({
--                hostname: Schema.String,
--                lastAnalyzedAt: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
--                status: Schema.optional(Schema.Union([
--                    Schema.Literals([
--                        "SUCCESS",
--                        "UNSUPPORTED_APPLICATION",
--                        "INSUFFICIENT_INVOCATIONS",
--                    ]),
--                    Schema.Null,
--                ])),
--            }).pipe(Schema.encodeKeys({
--                hostname: "hostname",
--                lastAnalyzedAt: "last_analyzed_at",
--                status: "status",
--            })),
--            Schema.Struct({
--                host: Schema.String,
--                lastAnalyzedAt: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
--                status: Schema.optional(Schema.Union([
--                    Schema.Literals([
--                        "SUCCESS",
--                        "UNSUPPORTED_APPLICATION",
--                        "INSUFFICIENT_INVOCATIONS",
--                    ]),
--                    Schema.Null,
--                ])),
--            }).pipe(Schema.encodeKeys({
--                host: "host",
--                lastAnalyzedAt: "last_analyzed_at",
--                status: "status",
--            })),
--        ]),
--        Schema.Null,
--    ])),
-+    placement: Schema.optional(Schema.Union([Schema.Unknown, Schema.Null])),
-     placementMode: Schema.optional(Schema.Union([Schema.Literal("smart"), Schema.Null])),
-     placementStatus: Schema.optional(Schema.Union([
-         Schema.Literals([
-@@ -4996,6 +4955,15 @@ export const GetScriptScriptAndVersionSettingResponse =
+@@ -4996,6 +5024,15 @@ export const GetScriptScriptAndVersionSettingResponse =
                  type: Schema.Literal("service"),
                  environment: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
              }),
@@ -235,7 +150,7 @@ index 392116f4ab3e578ee010a310cc31c86f76611c5e..bbce672c84bd0909777c1d9927056100
                  name: Schema.String,
                  part: Schema.String,
 diff --git a/src/services/workers.ts b/src/services/workers.ts
-index 332bc9fb02101659a0f265d3c690641dac0def3b..d925a77b16e42647bbf95062c66c209a35407371 100644
+index 332bc9fb02101659a0f265d3c690641dac0def3b..a8da69f64ab4c8db2c452878f92711771e194907 100644
 --- a/src/services/workers.ts
 +++ b/src/services/workers.ts
 @@ -1012,6 +1012,11 @@ export interface GetBetaWorkerVersionResponse {
@@ -285,53 +200,15 @@ index 332bc9fb02101659a0f265d3c690641dac0def3b..d925a77b16e42647bbf95062c66c209a
    /** The name used to identify the script. */
    id?: string | null;
    /** Date indicating targeted support in the Workers runtime. Backwards incompatible fixes to the runtime following this date will not affect this Worker. */
-@@ -7310,44 +7327,7 @@ export interface PutScriptResponse {
-     } | null;
+@@ -7311,6 +7328,7 @@ export interface PutScriptResponse {
    } | null;
    /** Configuration for [Smart Placement](https://developers.cloudflare.com/workers/configuration/smart-placement). Specify either mode for Smart Placement, or one of region/hostname/host for targeted place */
--  placement?:
--    | {
--        mode: "smart";
--        lastAnalyzedAt?: string | null;
--        status?:
--          | "SUCCESS"
--          | "UNSUPPORTED_APPLICATION"
--          | "INSUFFICIENT_INVOCATIONS"
--          | null;
--      }
--    | {
--        region: string;
--        lastAnalyzedAt?: string | null;
--        status?:
--          | "SUCCESS"
--          | "UNSUPPORTED_APPLICATION"
--          | "INSUFFICIENT_INVOCATIONS"
--          | null;
--      }
--    | {
--        hostname: string;
--        lastAnalyzedAt?: string | null;
--        status?:
--          | "SUCCESS"
--          | "UNSUPPORTED_APPLICATION"
--          | "INSUFFICIENT_INVOCATIONS"
--          | null;
--      }
--    | {
--        host: string;
--        lastAnalyzedAt?: string | null;
--        status?:
--          | "SUCCESS"
--          | "UNSUPPORTED_APPLICATION"
--          | "INSUFFICIENT_INVOCATIONS"
--          | null;
--      }
--    | null;
-+  placement?: unknown | null;
-   /** @deprecated */
-   placementMode?: "smart" | null;
-   /** @deprecated */
-@@ -7373,7 +7353,7 @@ export interface PutScriptResponse {
+   placement?:
++    | {}
+     | {
+         mode: "smart";
+         lastAnalyzedAt?: string | null;
+@@ -7373,7 +7391,7 @@ export interface PutScriptResponse {
  }
  
  export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
@@ -340,110 +217,15 @@ index 332bc9fb02101659a0f265d3c690641dac0def3b..d925a77b16e42647bbf95062c66c209a
    id: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
    compatibilityDate: Schema.optional(
      Schema.Union([Schema.String, Schema.Null]),
-@@ -7474,101 +7454,7 @@ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+@@ -7565,6 +7583,7 @@ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+             status: "status",
+           }),
+         ),
++        Schema.Struct({}),
+       ]),
        Schema.Null,
      ]),
-   ),
--  placement: Schema.optional(
--    Schema.Union([
--      Schema.Union([
--        Schema.Struct({
--          mode: Schema.Literal("smart"),
--          lastAnalyzedAt: Schema.optional(
--            Schema.Union([Schema.String, Schema.Null]),
--          ),
--          status: Schema.optional(
--            Schema.Union([
--              Schema.Literals([
--                "SUCCESS",
--                "UNSUPPORTED_APPLICATION",
--                "INSUFFICIENT_INVOCATIONS",
--              ]),
--              Schema.Null,
--            ]),
--          ),
--        }).pipe(
--          Schema.encodeKeys({
--            mode: "mode",
--            lastAnalyzedAt: "last_analyzed_at",
--            status: "status",
--          }),
--        ),
--        Schema.Struct({
--          region: Schema.String,
--          lastAnalyzedAt: Schema.optional(
--            Schema.Union([Schema.String, Schema.Null]),
--          ),
--          status: Schema.optional(
--            Schema.Union([
--              Schema.Literals([
--                "SUCCESS",
--                "UNSUPPORTED_APPLICATION",
--                "INSUFFICIENT_INVOCATIONS",
--              ]),
--              Schema.Null,
--            ]),
--          ),
--        }).pipe(
--          Schema.encodeKeys({
--            region: "region",
--            lastAnalyzedAt: "last_analyzed_at",
--            status: "status",
--          }),
--        ),
--        Schema.Struct({
--          hostname: Schema.String,
--          lastAnalyzedAt: Schema.optional(
--            Schema.Union([Schema.String, Schema.Null]),
--          ),
--          status: Schema.optional(
--            Schema.Union([
--              Schema.Literals([
--                "SUCCESS",
--                "UNSUPPORTED_APPLICATION",
--                "INSUFFICIENT_INVOCATIONS",
--              ]),
--              Schema.Null,
--            ]),
--          ),
--        }).pipe(
--          Schema.encodeKeys({
--            hostname: "hostname",
--            lastAnalyzedAt: "last_analyzed_at",
--            status: "status",
--          }),
--        ),
--        Schema.Struct({
--          host: Schema.String,
--          lastAnalyzedAt: Schema.optional(
--            Schema.Union([Schema.String, Schema.Null]),
--          ),
--          status: Schema.optional(
--            Schema.Union([
--              Schema.Literals([
--                "SUCCESS",
--                "UNSUPPORTED_APPLICATION",
--                "INSUFFICIENT_INVOCATIONS",
--              ]),
--              Schema.Null,
--            ]),
--          ),
--        }).pipe(
--          Schema.encodeKeys({
--            host: "host",
--            lastAnalyzedAt: "last_analyzed_at",
--            status: "status",
--          }),
--        ),
--      ]),
--      Schema.Null,
--    ]),
--  ),
-+  placement: Schema.optional(Schema.Union([Schema.Unknown, Schema.Null])),
-   placementMode: Schema.optional(
-     Schema.Union([Schema.Literal("smart"), Schema.Null]),
-   ),
-@@ -9941,6 +9827,17 @@ export const GetScriptScriptAndVersionSettingResponse =
+@@ -9941,6 +9960,17 @@ export const GetScriptScriptAndVersionSettingResponse =
                part: Schema.String,
                type: Schema.Literal("text_blob"),
              }),
