@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc"],
+  "plugins": ["typescript", "import", "oxc", "eslint", "unicorn", "node"],
   "options": {
     "reportUnusedDisableDirectives": "error",
     "denyWarnings": true,
@@ -10,7 +10,7 @@
   "categories": {
     "correctness": "error",
     "suspicious": "error",
-    "perf": "deny"
+    "perf": "error"
   },
   "rules": {},
   "env": {
