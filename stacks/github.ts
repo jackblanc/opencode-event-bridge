@@ -37,6 +37,7 @@ export default Alchemy.Stack(
             "Queues Write",
             "Cloudflare Tunnel Write",
             "Connectivity Directory Admin",
+            "Secrets Store Write",
           ],
           resources: {
             [`com.cloudflare.api.account.${accountId}`]: "*",
