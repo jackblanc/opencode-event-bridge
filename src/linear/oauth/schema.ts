@@ -16,6 +16,8 @@ export const LinearViewerGraphqlResponse = Schema.Struct({
       }),
     }),
   }),
+  errors: Schema.optionalKey(Schema.Never),
+  extensions: Schema.optionalKey(Schema.Unknown),
 });
 
 export const LinearOrgAuthRecord = Schema.Struct({

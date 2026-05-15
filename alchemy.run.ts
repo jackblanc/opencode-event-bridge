@@ -2,8 +2,8 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 
-import LinearWebhookProcessor from "./src/linear/webhook-processor.ts";
-import LinearWebhookReceiver from "./src/linear/webhook-receiver.ts";
+import LinearWebhookReceiver from "./src/workers/linear-ingress.ts";
+import LinearWebhookProcessor from "./src/workers/linear-webhook-processor.ts";
 
 export default Alchemy.Stack(
   "OpenCodeEventBridge",
