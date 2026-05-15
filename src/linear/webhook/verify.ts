@@ -14,7 +14,7 @@ export const verifyLinearWebhookSignature = (
     ).pipe(Effect.mapError(() => new LinearWebhookUnauthorized({ reason: "InvalidSignature" })));
     const verificationSignature = new Uint8Array(signatureBytes);
 
-    const key = yield* Effect.promise(() =>
+    const key = yield* Effect.promise(async () =>
       crypto.subtle.importKey(
         "raw",
         new TextEncoder().encode(linearWebhookSecret),
@@ -23,7 +23,7 @@ export const verifyLinearWebhookSignature = (
         ["verify"],
       ),
     );
-    const valid = yield* Effect.promise(() =>
+    const valid = yield* Effect.promise(async () =>
       crypto.subtle.verify("HMAC", key, verificationSignature, rawBody),
     );
 

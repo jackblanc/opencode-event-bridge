@@ -2,13 +2,10 @@ import { Random, Schema } from "effect";
 import * as Effect from "effect/Effect";
 
 import type { LinearHttpClientError } from "../client/client.ts";
+import type { LinearOAuthTokenResponse, LinearViewerGraphqlResponse } from "./schema.ts";
 
 import { LinearOAuthBadRequest, LinearOAuthUpstreamError } from "../webhook/api.ts";
-import {
-  LinearOAuthTokenResponse,
-  LinearOrgAuthRecord,
-  LinearViewerGraphqlResponse,
-} from "./schema.ts";
+import { LinearOrgAuthRecord } from "./schema.ts";
 
 const linearOAuthAuthorizeUrl = "https://linear.app/oauth/authorize";
 const linearOAuthScope = "write,app:mentionable,app:assignable";

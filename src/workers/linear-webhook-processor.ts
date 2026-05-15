@@ -1,10 +1,10 @@
 import * as Cloudflare from "alchemy/Cloudflare";
+import { Schema } from "effect";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
-import type { LinearWebhookPayload } from "../linear/webhook/payload.ts";
-
 import { LinearOrgAuthStore } from "../linear/oauth/store.ts";
+import { LinearWebhookPayload } from "../linear/webhook/payload.ts";
 import { LinearWebhookQueue } from "../linear/webhook/queue.ts";
 
 export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebhookProcessor>()(
@@ -15,14 +15,18 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
     const orgAuthResource = yield* LinearOrgAuthStore;
     yield* Cloudflare.KVNamespace.bind(orgAuthResource);
 
-    yield* Cloudflare.messages<LinearWebhookPayload>(queueResource).subscribe((stream) =>
+    yield* Cloudflare.messages(queueResource).subscribe((stream) =>
       Stream.runForEach(stream, (msg) =>
-        Effect.log("linear webhook", {
-          webhookId: msg.body.webhookId,
-          type: msg.body.type,
-          action: msg.body.action,
-          organizationId: msg.body.organizationId,
-        }),
+        Effect.gen(function* () {
+          const payload = yield* Schema.decodeUnknownEffect(LinearWebhookPayload)(msg.body);
+
+          return yield* Effect.log("linear webhook", {
+            webhookId: payload.webhookId,
+            type: payload.type,
+            action: payload.action,
+            organizationId: payload.organizationId,
+          });
+        }).pipe(Effect.catch(() => Effect.log("invalid linear webhook queue message"))),
       ),
     );
   }).pipe(Effect.provide([Cloudflare.KVNamespaceBindingLive, Cloudflare.QueueEventSourceLive])),

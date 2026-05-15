@@ -153,4 +153,4 @@ export const LinearWebhookPayload = Schema.Union([
   PromptedAgentSessionEventWebhookPayload,
 ]);
 
-export type LinearWebhookPayload = typeof LinearWebhookPayload.Type;
+export type LinearWebhookPayload = Schema.Schema.Type<typeof LinearWebhookPayload>;
