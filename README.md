@@ -19,3 +19,9 @@ Deploy with Alchemy:
 ```bash
 pnpm exec alchemy deploy
 ```
+
+Provision CI secrets with the admin profile:
+
+```bash
+pnpm run provision:github
+```
