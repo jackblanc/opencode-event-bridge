@@ -2,13 +2,13 @@
 
 ## Commands
 
-- Use Bun only: `bun install`, `bun run ...`.
-- Baseline gate: `bun run check`.
-- Auto-fix: `bun run lint:fix`, `bun run format:fix`.
+- Use pnpm only: `pnpm install`, `pnpm run ...`.
+- Baseline gate: `pnpm run check`.
+- Auto-fix: `pnpm run lint:fix`, `pnpm run format:fix`.
 
 ## Triage
 
-- For deployed Worker failures, check runtime logs first with Wrangler (`bunx wrangler tail <worker>`) and reproduce against the deployed URL while tailing. Do not infer production failures from local code alone.
+- For deployed Worker failures, check runtime logs first with Wrangler (`pnpm exec wrangler tail <worker>`) and reproduce against the deployed URL while tailing. Do not infer production failures from local code alone.
 
 ## Local References
 

@@ -5,17 +5,17 @@ Linear webhook bridge deployed with Alchemy on Cloudflare Workers.
 Install dependencies:
 
 ```bash
-bun install
+pnpm install
 ```
 
 Run checks:
 
 ```bash
-bun run check
+pnpm run check
 ```
 
 Deploy with Alchemy:
 
 ```bash
-bunx alchemy deploy
+pnpm exec alchemy deploy
 ```

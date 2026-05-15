@@ -6,17 +6,17 @@ pre-commit:
   jobs:
     - name: lint
       glob: "*.{ts,tsx,js,jsx}"
-      run: bunx oxlint --fix {staged_files}
+      run: pnpm exec oxlint --fix {staged_files}
       stage_fixed: true
 
     - name: format
       glob: "*.{ts,tsx,js,jsx,json,md,yml,yaml,css}"
-      run: bunx oxfmt --write {staged_files}
+      run: pnpm exec oxfmt --write {staged_files}
       stage_fixed: true
 
     - name: typecheck
       glob: "*.{ts,tsx}"
-      run: bun run typecheck
+      run: pnpm run typecheck
 
     - name: knip
-      run: bun run knip
+      run: pnpm run knip

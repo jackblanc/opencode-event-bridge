@@ -11,10 +11,9 @@
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:fix": "oxfmt --write .",
-    "check": "bun run typecheck && bun run lint && bun run format && bun run knip"
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run knip"
   },
   "dependencies": {
-    "@effect/platform-bun": "4.0.0-beta.66",
     "@effect/platform-node": "4.0.0-beta.66",
     "alchemy": "2.0.0-beta.39",
     "effect": "4.0.0-beta.66"
@@ -29,10 +28,10 @@
     "oxlint-tsgolint": "^0.22.1",
     "typescript": "^6.0.3"
   },
-  "overrides": {
-    "@distilled.cloud/cloudflare-runtime": "0.4.1"
-  },
-  "patchedDependencies": {
-    "@distilled.cloud/cloudflare@0.20.1": "patches/@distilled.cloud%2Fcloudflare@0.20.1.patch"
+  "packageManager": "pnpm@10.23.0",
+  "pnpm": {
+    "patchedDependencies": {
+      "@distilled.cloud/cloudflare@0.20.2": "patches/@distilled.cloud%2Fcloudflare@0.20.2.patch"
+    }
   }
 }
