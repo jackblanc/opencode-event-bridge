@@ -30,4 +30,6 @@ export const verifyLinearWebhookSignature = (
     if (!valid) {
       return yield* new LinearWebhookUnauthorized({ reason: "InvalidSignature" });
     }
+
+    return undefined;
   });
