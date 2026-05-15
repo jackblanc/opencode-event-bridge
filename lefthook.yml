@@ -20,3 +20,6 @@ pre-commit:
 
     - name: knip
       run: pnpm run knip
+
+    - name: test:unit
+      run: pnpm run test:unit

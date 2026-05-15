@@ -1,8 +1,30 @@
 diff --git a/lib/services/workers.d.ts b/lib/services/workers.d.ts
-index dcb0a37c6a7eeac27d20aade1454b876fbd5540d..4185fa9fad887e0ff4d3a7ee265a73134f2d6f60 100644
+index dcb0a37c6a7eeac27d20aade1454b876fbd5540d..1459c81ad7dd688bb9eea935dcd4120660596a70 100644
 --- a/lib/services/workers.d.ts
 +++ b/lib/services/workers.d.ts
-@@ -2026,6 +2026,10 @@ export interface PutScriptRequest {
+@@ -480,6 +480,10 @@ export interface GetBetaWorkerVersionResponse {
+         service: string;
+         type: "service";
+         environment?: string | null;
++    } | {
++        name: string;
++        serviceId: string;
++        type: "vpc_service";
+     } | {
+         name: string;
+         part: string;
+@@ -1108,6 +1112,10 @@ export interface CreateBetaWorkerVersionResponse {
+         service: string;
+         type: "service";
+         environment?: string | null;
++    } | {
++        name: string;
++        serviceId: string;
++        type: "vpc_service";
+     } | {
+         name: string;
+         part: string;
+@@ -2026,6 +2034,10 @@ export interface PutScriptRequest {
              service: string;
              type: "service";
              environment?: string;
@@ -13,8 +35,60 @@ index dcb0a37c6a7eeac27d20aade1454b876fbd5540d..4185fa9fad887e0ff4d3a7ee265a7313
          } | {
              name: string;
              part: string;
+diff --git a/lib/services/workers.js b/lib/services/workers.js
+index 392116f4ab3e578ee010a310cc31c86f76611c5e..7da32b2badf936b5aaf6b135a19ccfde2e5dbd8d 100644
+--- a/lib/services/workers.js
++++ b/lib/services/workers.js
+@@ -605,6 +605,15 @@ export const GetBetaWorkerVersionResponse =
+                 type: Schema.Literal("service"),
+                 environment: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+             }),
++            Schema.Struct({
++                name: Schema.String,
++                serviceId: Schema.String,
++                type: Schema.Literal("vpc_service"),
++            }).pipe(Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++            })),
+             Schema.Struct({
+                 name: Schema.String,
+                 part: Schema.String,
+@@ -1797,6 +1806,15 @@ export const CreateBetaWorkerVersionResponse =
+                 type: Schema.Literal("service"),
+                 environment: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+             }),
++            Schema.Struct({
++                name: Schema.String,
++                serviceId: Schema.String,
++                type: Schema.Literal("vpc_service"),
++            }).pipe(Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++            })),
+             Schema.Struct({
+                 name: Schema.String,
+                 part: Schema.String,
+@@ -3425,6 +3443,15 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+                 type: Schema.Literal("service"),
+                 environment: Schema.optional(Schema.String),
+             }),
++            Schema.Struct({
++                name: Schema.String,
++                serviceId: Schema.String,
++                type: Schema.Literal("vpc_service"),
++            }).pipe(Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++            })),
+             Schema.Struct({
+                 name: Schema.String,
+                 part: Schema.String,
 diff --git a/src/services/workers.ts b/src/services/workers.ts
-index 332bc9fb02101659a0f265d3c690641dac0def3b..052d2327aa1a3bc358242ece344b186900f04c2f 100644
+index 332bc9fb02101659a0f265d3c690641dac0def3b..9834205e14c7465006f75e136401d1b632cb37e5 100644
 --- a/src/services/workers.ts
 +++ b/src/services/workers.ts
 @@ -1012,6 +1012,11 @@ export interface GetBetaWorkerVersionResponse {
@@ -55,27 +129,9 @@ index 332bc9fb02101659a0f265d3c690641dac0def3b..052d2327aa1a3bc358242ece344b1869
            Schema.Struct({
              name: Schema.String,
              part: Schema.String,
-@@ -7262,7 +7279,7 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
- ) as unknown as Schema.Schema<PutScriptRequest>;
- 
- export interface PutScriptResponse {
--  startupTimeMs: number;
-+  startupTimeMs?: number;
-   /** The name used to identify the script. */
-   id?: string | null;
-   /** Date indicating targeted support in the Workers runtime. Backwards incompatible fixes to the runtime following this date will not affect this Worker. */
-@@ -7373,7 +7390,7 @@ export interface PutScriptResponse {
- }
- 
- export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
--  startupTimeMs: Schema.Number,
-+  startupTimeMs: Schema.optional(Schema.Number),
-   id: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
-   compatibilityDate: Schema.optional(
-     Schema.Union([Schema.String, Schema.Null]),
-@@ -9936,6 +9953,17 @@ export const GetScriptScriptAndVersionSettingResponse =
-                 Schema.Union([Schema.String, Schema.Null]),
-               ),
+@@ -9941,6 +9958,17 @@ export const GetScriptScriptAndVersionSettingResponse =
+               part: Schema.String,
+               type: Schema.Literal("text_blob"),
              }),
 +            Schema.Struct({
 +              name: Schema.String,
@@ -89,5 +145,5 @@ index 332bc9fb02101659a0f265d3c690641dac0def3b..052d2327aa1a3bc358242ece344b1869
 +              }),
 +            ),
              Schema.Struct({
+               indexName: Schema.String,
                name: Schema.String,
-               part: Schema.String,
