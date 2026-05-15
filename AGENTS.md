@@ -8,10 +8,10 @@
 
 ## Dependency Patches
 
-- Create dependency patches with Bun's patch workflow:
-- Step 1: run `bun patch <pkg>` before editing so Bun creates a safe, unlinked `node_modules` copy instead of risking edits to the global cache.
-- Step 2: edit `node_modules/<pkg>` and test locally.
-- Step 3: run `bun patch --commit node_modules/<pkg>` to generate `patches/*.patch` and update package metadata.
+- Create dependency patches with pnpm's patch workflow:
+- Step 1: run `pnpm patch <pkg>@<version>`.
+- Step 2: edit the temporary patch directory printed by pnpm and test locally.
+- Step 3: run `pnpm patch-commit <patchDir>` to generate `patches/*.patch` and update package metadata.
 - Do not hand-edit package patches.
 
 ## Triage
