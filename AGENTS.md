@@ -1,10 +1,39 @@
 # Agent Notes
 
+This project is an event bridge for OpenCode, an open-source coding agent. It receives events from external sources and sends them to an OpenCode server for processing.
+
+The only event source right now is Linear. In the future, we could add support for other event sources.
+
+This project is an evolution of ~/projects/opencode-linear-agent, but written in Effect TypeScript instead of raw TS.
+
 ## Commands
 
 - Use pnpm only: `pnpm install`, `pnpm run ...`.
 - Baseline gate: `pnpm run check`.
 - Auto-fix: `pnpm run lint:fix`, `pnpm run format:fix`.
+
+## Dependency References
+
+Reference the source code of our open source dependencies to understand them. If a user says "read OpenCode" or "check the source code", reference these local repository checkouts.
+
+- Effect v4: `~/oss/effect-smol` (https://github.com/effect-ts/effect-smol)
+- Alchemy: `~/oss/alchemy-effect` (https://github.com/alchemy-run/alchemy-effect)
+  - distilled (SDKs used by Alchemy): `~/oss/distilled` (https://github.com/alchemy-run/distilled)
+- OpenCode: `~/oss/opencode` (https://github.com/anomalyco/opencode)
+
+## Linear Documentation References
+
+Linear provides a robust Agent API for connecting Linear to coding agents.
+
+We do not use Linear's TypeScript SDK directly because it's not very good. But, the SDK is a useful reference. It is cloned to `~/oss/linear`.
+
+To understand the Agent API, read the web documentation:
+
+- [Agent Interaction Guidelines (AIG)](https://linear.app/developers/aig.md)
+- [Getting Started](https://linear.app/developers/agents.md)
+- [Developing the Agent Interaction](https://linear.app/developers/agent-interaction.md)
+- [Interaction Best Practices](https://linear.app/developers/agent-best-practices.md)
+- [Signals](https://linear.app/developers/agent-signals.md)
 
 ## Dependency Patches
 
@@ -17,12 +46,6 @@
 ## Triage
 
 - For deployed Worker failures, check runtime logs first with Wrangler (`pnpm exec wrangler tail <worker>`) and reproduce against the deployed URL while tailing. Do not infer production failures from local code alone.
-
-## Local References
-
-- Effect v4 source: `~/oss/effect-smol` (https://github.com/effect-ts/effect-smol)
-- Alchemy source: `~/oss/alchemy-effect` (https://github.com/alchemy-run/alchemy-effect)
-- Read dependency source/docs before guessing behavior.
 
 ## Code Conventions
 

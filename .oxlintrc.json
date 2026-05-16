@@ -13,6 +13,24 @@
     "perf": "error"
   },
   "rules": {
+    // Custom Rules
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@opencode-ai/sdk/v1",
+            "message": "Import from '@opencode-ai/sdk/v2' instead of v1 for better type safety and features."
+          },
+          {
+            "name": "@opencode-ai/sdk",
+            "message": "Import from '@opencode-ai/sdk/v2' instead of the root SDK package for better type safety and features."
+          }
+        ]
+      }
+    ],
+
+    // TypeScript Rules
     "typescript/consistent-type-assertions": [
       "error",
       {
@@ -67,6 +85,7 @@
     ],
     "typescript/use-unknown-in-catch-callback-variable": "error",
 
+    // Import Rules
     "import/consistent-type-specifier-style": ["error", "prefer-top-level"],
     "import/no-commonjs": "error",
     "import/no-cycle": "error",
@@ -74,6 +93,7 @@
     "import/no-empty-named-blocks": "error",
     "import/no-self-import": "error",
 
+    // ESLint Rules
     "eslint/default-case-last": "error",
     "eslint/eqeqeq": "error",
     "eslint/no-console": "error",
@@ -87,8 +107,10 @@
     "eslint/no-useless-constructor": "error",
     "eslint/no-var": "error",
 
+    // Oxlint Rules
     "oxc/misrefactored-assign-op": "error",
 
+    // Unicorn Rules
     "unicorn/no-abusive-eslint-disable": "error",
     "unicorn/no-accessor-recursion": "error",
     "unicorn/no-console-spaces": "error",

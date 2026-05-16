@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@effect/platform-node": "4.0.0-beta.66",
+    "@opencode-ai/sdk": "^1.15.3",
     "alchemy": "2.0.0-beta.39",
     "effect": "4.0.0-beta.66"
   },
@@ -36,7 +37,8 @@
   "packageManager": "pnpm@10.23.0",
   "pnpm": {
     "patchedDependencies": {
-      "@distilled.cloud/cloudflare@0.20.2": "patches/@distilled.cloud__cloudflare@0.20.2.patch"
+      "@distilled.cloud/cloudflare@0.20.2": "patches/@distilled.cloud__cloudflare@0.20.2.patch",
+      "alchemy@2.0.0-beta.39": "patches/alchemy@2.0.0-beta.39.patch"
     }
   }
 }
