@@ -6,14 +6,22 @@
 - Baseline gate: `pnpm run check`.
 - Auto-fix: `pnpm run lint:fix`, `pnpm run format:fix`.
 
+## Dependency Patches
+
+- Create dependency patches with pnpm's patch workflow:
+- Step 1: run `pnpm patch <pkg>@<version>`.
+- Step 2: edit the temporary patch directory printed by pnpm and test locally.
+- Step 3: run `pnpm patch-commit <patchDir>` to generate `patches/*.patch` and update package metadata.
+- Do not hand-edit package patches.
+
 ## Triage
 
 - For deployed Worker failures, check runtime logs first with Wrangler (`pnpm exec wrangler tail <worker>`) and reproduce against the deployed URL while tailing. Do not infer production failures from local code alone.
 
 ## Local References
 
-- Effect v4 source: `~/oss/effect-smol`.
-- Alchemy source: `~/oss/alchemy-effect`.
+- Effect v4 source: `~/oss/effect-smol` (https://github.com/effect-ts/effect-smol)
+- Alchemy source: `~/oss/alchemy-effect` (https://github.com/alchemy-run/alchemy-effect)
 - Read dependency source/docs before guessing behavior.
 
 ## Code Conventions
