@@ -1,0 +1,134 @@
+diff --git a/lib/services/workers.d.ts b/lib/services/workers.d.ts
+index dcb0a37c6a7eeac27d20aade1454b876fbd5540d..d30850fd65f29f8969e1c8a8573dbd6eb464bfb7 100644
+--- a/lib/services/workers.d.ts
++++ b/lib/services/workers.d.ts
+@@ -2026,6 +2026,10 @@ export interface PutScriptRequest {
+             service: string;
+             type: "service";
+             environment?: string;
++        } | {
++            name: string;
++            serviceId: string;
++            type: "vpc_service";
+         } | {
+             name: string;
+             part: string;
+@@ -2161,7 +2165,7 @@ export interface PutScriptRequest {
+ }
+ export declare const PutScriptRequest: Schema.Schema<PutScriptRequest>;
+ export interface PutScriptResponse {
+-    startupTimeMs: number;
++    startupTimeMs?: number | null;
+     /** The name used to identify the script. */
+     id?: string | null;
+     /** Date indicating targeted support in the Workers runtime. Backwards incompatible fixes to the runtime following this date will not affect this Worker. */
+@@ -2212,7 +2216,7 @@ export interface PutScriptResponse {
+         } | null;
+     } | null;
+     /** Configuration for [Smart Placement](https://developers.cloudflare.com/workers/configuration/smart-placement). Specify either mode for Smart Placement, or one of region/hostname/host for targeted place */
+-    placement?: {
++    placement?: {} | {
+         mode: "smart";
+         lastAnalyzedAt?: string | null;
+         status?: "SUCCESS" | "UNSUPPORTED_APPLICATION" | "INSUFFICIENT_INVOCATIONS" | null;
+diff --git a/lib/services/workers.js b/lib/services/workers.js
+index 3d9f897f50e392dd879735170df2b6f2524038c8..155e0f358a445ec86bbc2a691806e7355c68509a 100644
+--- a/lib/services/workers.js
++++ b/lib/services/workers.js
+@@ -3425,6 +3425,15 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+                 type: Schema.Literal("service"),
+                 environment: Schema.optional(Schema.String),
+             }),
++            Schema.Struct({
++                name: Schema.String,
++                serviceId: Schema.String,
++                type: Schema.Literal("vpc_service"),
++            }).pipe(Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++            })),
+             Schema.Struct({
+                 name: Schema.String,
+                 part: Schema.String,
+@@ -3687,7 +3696,7 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+     contentType: "multipart",
+ }));
+ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+-    startupTimeMs: Schema.Number,
++    startupTimeMs: Schema.optional(Schema.Union([Schema.Number, Schema.Null])),
+     id: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+     compatibilityDate: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+     compatibilityFlags: Schema.optional(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+@@ -3752,6 +3761,7 @@ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+     ])),
+     placement: Schema.optional(Schema.Union([
+         Schema.Union([
++            Schema.Struct({}),
+             Schema.Struct({
+                 mode: Schema.Literal("smart"),
+                 lastAnalyzedAt: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+diff --git a/src/services/workers.ts b/src/services/workers.ts
+index c5f01d4ef03669bb9db37052fffe794b0a5f0f77..998916fbe863c471c10f6fe492dc602a563693c9 100644
+--- a/src/services/workers.ts
++++ b/src/services/workers.ts
+@@ -6592,6 +6592,7 @@ export interface PutScriptRequest {
+           destinationAddress?: string;
+         }
+       | { name: string; service: string; type: "service"; environment?: string }
++      | { name: string; serviceId: string; type: "vpc_service" }
+       | { name: string; part: string; type: "text_blob" }
+       | { indexName: string; name: string; type: "vectorize" }
+       | { name: string; type: "version_metadata" }
+@@ -6915,6 +6916,17 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+             type: Schema.Literal("service"),
+             environment: Schema.optional(Schema.String),
+           }),
++          Schema.Struct({
++            name: Schema.String,
++            serviceId: Schema.String,
++            type: Schema.Literal("vpc_service"),
++          }).pipe(
++            Schema.encodeKeys({
++              name: "name",
++              serviceId: "service_id",
++              type: "type",
++            }),
++          ),
+           Schema.Struct({
+             name: Schema.String,
+             part: Schema.String,
+@@ -7262,7 +7274,7 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+ ) as unknown as Schema.Schema<PutScriptRequest>;
+ 
+ export interface PutScriptResponse {
+-  startupTimeMs: number;
++  startupTimeMs?: number | null;
+   /** The name used to identify the script. */
+   id?: string | null;
+   /** Date indicating targeted support in the Workers runtime. Backwards incompatible fixes to the runtime following this date will not affect this Worker. */
+@@ -7311,6 +7323,7 @@ export interface PutScriptResponse {
+   } | null;
+   /** Configuration for [Smart Placement](https://developers.cloudflare.com/workers/configuration/smart-placement). Specify either mode for Smart Placement, or one of region/hostname/host for targeted place */
+   placement?:
++    | {}
+     | {
+         mode: "smart";
+         lastAnalyzedAt?: string | null;
+@@ -7373,7 +7386,7 @@ export interface PutScriptResponse {
+ }
+ 
+ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+-  startupTimeMs: Schema.Number,
++  startupTimeMs: Schema.optional(Schema.Union([Schema.Number, Schema.Null])),
+   id: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+   compatibilityDate: Schema.optional(
+     Schema.Union([Schema.String, Schema.Null]),
+@@ -7477,6 +7490,7 @@ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+   placement: Schema.optional(
+     Schema.Union([
+       Schema.Union([
++        Schema.Struct({}),
+         Schema.Struct({
+           mode: Schema.Literal("smart"),
+           lastAnalyzedAt: Schema.optional(

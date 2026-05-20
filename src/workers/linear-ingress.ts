@@ -1,7 +1,9 @@
+import * as BrowserCrypto from "@effect/platform-browser/BrowserCrypto";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as Redacted from "effect/Redacted";
 import * as Etag from "effect/unstable/http/Etag";
 import * as HttpPlatform from "effect/unstable/http/HttpPlatform";
@@ -18,6 +20,12 @@ import { LinearOAuthStateStore, LinearOrgAuthStore } from "../linear/oauth/store
 import { LinearWebhookApi } from "../linear/webhook/api.ts";
 import { LinearWebhookQueue } from "../linear/webhook/queue.ts";
 import { receiveLinearWebhook } from "../linear/webhook/receive.ts";
+
+// Workers do not have filesystem-backed file responses, and this API never serves files.
+const HttpPlatformStub = Layer.succeed(HttpPlatform.HttpPlatform, {
+  fileResponse: () => Effect.die("HttpPlatform.fileResponse not supported"),
+  fileWebResponse: () => Effect.die("HttpPlatform.fileWebResponse not supported"),
+});
 
 export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebhookReceiver>()(
   "LinearWebhookReceiver",
@@ -86,9 +94,9 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
     return {
       fetch: HttpApiBuilder.layer(LinearWebhookApi).pipe(
         Layer.provide(group),
-        Layer.provide([HttpPlatform.layer, Etag.layer]),
+        Layer.provide([Etag.layer, HttpPlatformStub, Path.layer]),
         HttpRouter.toHttpEffect,
-        Effect.scoped,
+        Effect.map((handler) => handler.pipe(Effect.provide(BrowserCrypto.layer))),
       ),
     };
   }).pipe(

@@ -1,4 +1,4 @@
-import { Random, Schema } from "effect";
+import { Crypto, Schema } from "effect";
 import * as Effect from "effect/Effect";
 
 import type { LinearHttpClientError } from "../client/client.ts";
@@ -32,7 +32,8 @@ export const makeLinearOAuthAuthorizeUrl = <R>(input: {
   };
 }) =>
   Effect.gen(function* () {
-    const state = yield* Random.nextUUIDv4;
+    const crypto = yield* Crypto.Crypto;
+    const state = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
     yield* input.state.put(state, "pending", { expirationTtl: 300 }).pipe(Effect.orDie);
 
     const url = new URL(linearOAuthAuthorizeUrl);

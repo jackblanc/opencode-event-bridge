@@ -82,7 +82,7 @@ index 0000000000000000000000000000000000000000..f49bb136ccaba161eafad112a718e3cc
 +{"version":3,"file":"VpcServiceBinding.d.ts","sourceRoot":"","sources":["../../../src/Cloudflare/VpcService/VpcServiceBinding.ts"],"names":[],"mappings":""}
 diff --git a/lib/Cloudflare/VpcService/VpcServiceBinding.js b/lib/Cloudflare/VpcService/VpcServiceBinding.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..7b9dabb270d46a085a59827f876a463ab7831e13
+index 0000000000000000000000000000000000000000..1807cfc5986b633fc7e4c0fa17f71f5d15643c1a
 --- /dev/null
 +++ b/lib/Cloudflare/VpcService/VpcServiceBinding.js
 @@ -0,0 +1,71 @@
@@ -182,6 +182,81 @@ index 7d8fd40f59b9f3b009d9b8334f6b478d0be9b82b..ac2722779e0de10b5f4afed4b4445e62
 +export * from "./VpcServiceBinding.js";
  export * from "./VpcServiceRef.js";
  //# sourceMappingURL=index.js.map
+diff --git a/lib/Cloudflare/Workers/InferEnv.d.ts b/lib/Cloudflare/Workers/InferEnv.d.ts
+index a0ee6f1cdead70ec3ca976e366241dac1f78d2cc..afa57d01efa36a270c0e3b4c60725c503a63154f 100644
+--- a/lib/Cloudflare/Workers/InferEnv.d.ts
++++ b/lib/Cloudflare/Workers/InferEnv.d.ts
+@@ -7,7 +7,7 @@ import type { Worker } from "./Worker.ts";
+ export type InferEnv<W> = W extends Effect.Effect<infer A, infer _E, infer _R> ? InferEnv<A> : W extends Worker<any> ? InferEnv<Exclude<W["Props"]["bindings"], undefined>> : {
+     [k in keyof W]: GetBindingType<W[k]>;
+ };
+-export type GetBindingType<T> = T extends Effect.Effect<infer A, infer _E, infer _R> ? GetBindingType<A> : T extends Cloudflare.Assets ? Service : T extends Rpc<infer Shape extends object> ? RpcWireShape<Shape> & Service : T extends Cloudflare.D1Database ? D1Database : T extends Cloudflare.R2Bucket ? R2Bucket : T extends Cloudflare.KVNamespace ? KVNamespace : T extends Cloudflare.Queue ? Queue<unknown> : T extends Cloudflare.AiGateway ? Ai : T extends Cloudflare.SendEmail ? SendEmail : T extends Cloudflare.AnalyticsEngineDataset ? AnalyticsEngineDataset : T extends Cloudflare.Artifacts ? Artifacts : T extends Cloudflare.Images ? ImagesBinding : T extends Cloudflare.Hyperdrive ? Hyperdrive : T extends Cloudflare.DurableObjectNamespaceLike ? DurableObjectNamespace<Exclude<T["Shape"], undefined>> : T;
++export type GetBindingType<T> = T extends Effect.Effect<infer A, infer _E, infer _R> ? GetBindingType<A> : T extends Cloudflare.Assets ? Service : T extends Rpc<infer Shape extends object> ? RpcWireShape<Shape> & Service : T extends Cloudflare.D1Database ? D1Database : T extends Cloudflare.R2Bucket ? R2Bucket : T extends Cloudflare.KVNamespace ? KVNamespace : T extends Cloudflare.Queue ? Queue<unknown> : T extends Cloudflare.AiGateway ? Ai : T extends Cloudflare.SendEmail ? SendEmail : T extends Cloudflare.AnalyticsEngineDataset ? AnalyticsEngineDataset : T extends Cloudflare.Artifacts ? Artifacts : T extends Cloudflare.Images ? ImagesBinding : T extends Cloudflare.Hyperdrive ? Hyperdrive : T extends Cloudflare.VpcService ? Service : T extends Cloudflare.DurableObjectNamespaceLike ? DurableObjectNamespace<Exclude<T["Shape"], undefined>> : T;
+ /**
+  * Cloudflare service-binding wire shape for an Effect-native Worker.
+  *
+diff --git a/lib/Cloudflare/Workers/Worker.d.ts b/lib/Cloudflare/Workers/Worker.d.ts
+index 251713b02c6df3dd0606e01d10735d2be05b3047..3d3a15fdf094361c8d3392d8c895c9058a54cf12 100644
+--- a/lib/Cloudflare/Workers/Worker.d.ts
++++ b/lib/Cloudflare/Workers/Worker.d.ts
+@@ -23,7 +23,7 @@ import { type WorkerRuntimeContext } from "./WorkerRuntimeContext.ts";
+ export declare const WorkerTypeId = "Cloudflare.Worker";
+ export type WorkerTypeId = typeof WorkerTypeId;
+ export declare const isWorker: <T>(value: T) => value is T & Worker;
+-declare const WorkerEnvironment_base: Context.ServiceClass<WorkerEnvironment, "Cloudflare.Workers.WorkerEnvironment", Record<string, any>>;
++declare const WorkerEnvironment_base: Context.ServiceClass<WorkerEnvironment, "Cloudflare.Workers.WorkerEnvironment", Record<string, unknown>>;
+ export declare class WorkerEnvironment extends WorkerEnvironment_base {
+ }
+ declare const WorkerExecutionContext_base: Context.ServiceClass<WorkerExecutionContext, "Cloudflare.Workers.WorkerExecutionContext", cf.ExecutionContext<unknown>>;
+diff --git a/lib/Cloudflare/Workers/WorkerAsyncBindings.js b/lib/Cloudflare/Workers/WorkerAsyncBindings.js
+index 11cb811cb739e1b452e531b81d7a31ce2fd8b016..2ae6c6c6ed008eb4a3a9d0092cdec3f52d034eb7 100644
+--- a/lib/Cloudflare/Workers/WorkerAsyncBindings.js
++++ b/lib/Cloudflare/Workers/WorkerAsyncBindings.js
+@@ -106,14 +106,20 @@ export const bindWorkerAsyncBindings = Effect.fnUntraced(function* (resource, pr
+                                                                         name: bindingName,
+                                                                         id: binding.hyperdriveId,
+                                                                     }
+-                                                                    : isWorker(binding)
++                                                                    : binding.Type === "Cloudflare.VpcService"
+                                                                         ? {
+-                                                                            type: "service",
++                                                                            type: "vpc_service",
+                                                                             name: bindingName,
+-                                                                            service: binding.workerName,
++                                                                            serviceId: binding.serviceId,
+                                                                         }
+-                                                                        : // TODO(sam): handle others
+-                                                                            undefined;
++                                                                        : isWorker(binding)
++                                                                            ? {
++                                                                                type: "service",
++                                                                                name: bindingName,
++                                                                                service: binding.workerName,
++                                                                            }
++                                                                            : // TODO(sam): handle others
++                                                                                undefined;
+             if (bindingMeta) {
+                 yield* resource.bind `${bindingName}`({
+                     bindings: [bindingMeta],
+diff --git a/lib/Cloudflare/Workers/WorkerBinding.d.ts b/lib/Cloudflare/Workers/WorkerBinding.d.ts
+index 8546bf979cc23bb5b8bb3fb5ee9762bb41590bea..cf4b425893b806c700441c8803d557f93e3d05b6 100644
+--- a/lib/Cloudflare/Workers/WorkerBinding.d.ts
++++ b/lib/Cloudflare/Workers/WorkerBinding.d.ts
+@@ -12,12 +12,13 @@ import { Images } from "../Images/Images.ts";
+ import type { KVNamespace } from "../KV/KVNamespace.ts";
+ import type { Queue } from "../Queue/Queue.ts";
+ import type { R2Bucket } from "../R2/R2Bucket.ts";
++import type { VpcService } from "../VpcService/VpcService.ts";
+ import type { Assets } from "./Assets.ts";
+ import type { DurableObjectNamespaceLike } from "./DurableObjectNamespace.ts";
+ import { Worker } from "./Worker.ts";
+ export type WorkerBinding = Exclude<workers.PutScriptRequest["metadata"]["bindings"], undefined>[number];
+ export type WorkerSettingsBinding = Exclude<workers.GetScriptScriptAndVersionSettingResponse["bindings"], null | undefined>[number];
+-export type WorkerBindingResource = Assets | R2Bucket | D1Database | KVNamespace | Queue | AiGateway | AnalyticsEngineDataset | SendEmail | Artifacts | Images | Hyperdrive | Worker | DurableObjectNamespaceLike<any>;
++export type WorkerBindingResource = Assets | R2Bucket | D1Database | KVNamespace | Queue | AiGateway | AnalyticsEngineDataset | SendEmail | Artifacts | Images | Hyperdrive | VpcService | Worker | DurableObjectNamespaceLike<any>;
+ export type WorkerBindings = {
+     [bindingName in string]: WorkerBindingResource;
+ };
 diff --git a/src/Cloudflare/VpcService/VpcService.ts b/src/Cloudflare/VpcService/VpcService.ts
 index 90de2f32c010e201a771dd50e8e3ead7af00432c..45dd611e9c56db3659796cc7a8e4a3db1f23b482 100644
 --- a/src/Cloudflare/VpcService/VpcService.ts
@@ -207,11 +282,10 @@ index 90de2f32c010e201a771dd50e8e3ead7af00432c..45dd611e9c56db3659796cc7a8e4a3db
    Provider.effect(
 diff --git a/src/Cloudflare/VpcService/VpcServiceBinding.ts b/src/Cloudflare/VpcService/VpcServiceBinding.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..a83c34324e5f6bdcd9d560a31bffaa1e331cfc1b
+index 0000000000000000000000000000000000000000..342e6d4f3c3f58bb601a761f54246a900a43ed65
 --- /dev/null
 +++ b/src/Cloudflare/VpcService/VpcServiceBinding.ts
-@@ -0,0 +1,105 @@
-+import type * as runtime from "@cloudflare/workers-types";
+@@ -0,0 +1,104 @@
 +import * as Effect from "effect/Effect";
 +import * as Layer from "effect/Layer";
 +import * as Binding from "../../Binding.ts";
@@ -325,38 +399,33 @@ index 0b8bbc0a93657512d082a9315b2ba37b5790c022..135b23fcb5b91cb149f1d18532475a90
 +export * from "./VpcServiceBinding.ts";
  export * from "./VpcServiceRef.ts";
 diff --git a/src/Cloudflare/Workers/InferEnv.ts b/src/Cloudflare/Workers/InferEnv.ts
-index 3b954808195bcad0858ae364e8310243fdd8d9f9..9a5414e8c9cc1a77beb67563bb6abfadb04d31d2 100644
+index 5ddba65661b8cb414b87ee297044ead160ae4694..1401fca7c1e2582902285ae9150d0d52979f46ef 100644
 --- a/src/Cloudflare/Workers/InferEnv.ts
 +++ b/src/Cloudflare/Workers/InferEnv.ts
-@@ -107,8 +107,10 @@ export type GetBindingType<T> = T extends Cloudflare.Assets
-                       ? ImagesBinding
-                       : T extends Cloudflare.Hyperdrive
-                         ? Hyperdrive
--                        : T extends Cloudflare.DurableObjectNamespaceLike
--                          ? DurableObjectNamespace<
--                              Exclude<T["Shape"], undefined>
--                            >
--                          : never;
-+                        : T extends Cloudflare.VpcService
-+                          ? Service
-+                          : T extends Cloudflare.DurableObjectNamespaceLike
-+                            ? DurableObjectNamespace<
-+                                Exclude<T["Shape"], undefined>
-+                              >
-+                            : never;
+@@ -43,11 +43,13 @@ export type GetBindingType<T> =
+                           ? ImagesBinding
+                           : T extends Cloudflare.Hyperdrive
+                             ? Hyperdrive
+-                            : T extends Cloudflare.DurableObjectNamespaceLike
+-                              ? DurableObjectNamespace<
+-                                  Exclude<T["Shape"], undefined>
+-                                >
+-                              : T;
++                            : T extends Cloudflare.VpcService
++                              ? Service
++                              : T extends Cloudflare.DurableObjectNamespaceLike
++                                ? DurableObjectNamespace<
++                                    Exclude<T["Shape"], undefined>
++                                  >
++                                : T;
+ 
+ /**
+  * Cloudflare service-binding wire shape for an Effect-native Worker.
 diff --git a/src/Cloudflare/Workers/Worker.ts b/src/Cloudflare/Workers/Worker.ts
-index 90c241a2a02ff0ebb5b4050f5c787b4f5e8f7384..25cf9806389844b8701eb0139611c4320a979fb2 100644
+index 6b8c927467fe6b2aae5c5c0656bee8025111f069..8dd10a459b264f02317fd42c94ab66c415220e92 100644
 --- a/src/Cloudflare/Workers/Worker.ts
 +++ b/src/Cloudflare/Workers/Worker.ts
-@@ -66,6 +66,7 @@ import { CloudflareLogs } from "../Logs.ts";
- import type { Providers } from "../Providers.ts";
- import type { Queue as CloudflareQueue } from "../Queue/Queue.ts";
- import type { R2Bucket } from "../R2/R2Bucket.ts";
-+import type { VpcService } from "../VpcService/VpcService.ts";
- import {
-   isAssets,
-   readAssets,
-@@ -105,7 +106,7 @@ export const isWorker = <T>(value: T): value is T & Worker =>
+@@ -65,7 +65,7 @@ export const isWorker = <T>(value: T): value is T & Worker =>
  
  export class WorkerEnvironment extends Context.Service<
    WorkerEnvironment,
@@ -365,37 +434,53 @@ index 90c241a2a02ff0ebb5b4050f5c787b4f5e8f7384..25cf9806389844b8701eb0139611c432
  >()("Cloudflare.Workers.WorkerEnvironment") {}
  
  export class WorkerExecutionContext extends Context.Service<
-@@ -206,6 +207,7 @@ export type WorkerBindingResource =
-   | ArtifactsBinding
-   | ImagesBinding
+diff --git a/src/Cloudflare/Workers/WorkerAsyncBindings.ts b/src/Cloudflare/Workers/WorkerAsyncBindings.ts
+index eae68ad9dc9c8224047ca372c87303f0069ec672..72382fe7bfdaf6d67f4ab5b909278db71c3b7d0a 100644
+--- a/src/Cloudflare/Workers/WorkerAsyncBindings.ts
++++ b/src/Cloudflare/Workers/WorkerAsyncBindings.ts
+@@ -124,14 +124,20 @@ export const bindWorkerAsyncBindings = Effect.fnUntraced(function* (
+                                         name: bindingName,
+                                         id: binding.hyperdriveId,
+                                       }
+-                                    : isWorker(binding)
++                                    : binding.Type === "Cloudflare.VpcService"
+                                       ? {
+-                                          type: "service",
++                                          type: "vpc_service",
+                                           name: bindingName,
+-                                          service: binding.workerName,
++                                          serviceId: binding.serviceId,
+                                         }
+-                                      : // TODO(sam): handle others
+-                                        undefined;
++                                      : isWorker(binding)
++                                        ? {
++                                            type: "service",
++                                            name: bindingName,
++                                            service: binding.workerName,
++                                          }
++                                        : // TODO(sam): handle others
++                                          undefined;
+ 
+       if (bindingMeta) {
+         yield* resource.bind`${bindingName}`({
+diff --git a/src/Cloudflare/Workers/WorkerBinding.ts b/src/Cloudflare/Workers/WorkerBinding.ts
+index 82923d3a2154b9c47a51ebbe3aa648f86fe6dc1d..b1232f18c042f2034561b8eb52aecd7eda3d3a83 100644
+--- a/src/Cloudflare/Workers/WorkerBinding.ts
++++ b/src/Cloudflare/Workers/WorkerBinding.ts
+@@ -13,6 +13,7 @@ import { Images } from "../Images/Images.ts";
+ import type { KVNamespace } from "../KV/KVNamespace.ts";
+ import type { Queue } from "../Queue/Queue.ts";
+ import type { R2Bucket } from "../R2/R2Bucket.ts";
++import type { VpcService } from "../VpcService/VpcService.ts";
+ import type { Assets } from "./Assets.ts";
+ import type { DurableObjectNamespaceLike } from "./DurableObjectNamespace.ts";
+ import { makeRpcStub } from "./Rpc.ts";
+@@ -40,6 +41,7 @@ export type WorkerBindingResource =
+   | Artifacts
+   | Images
    | Hyperdrive
 +  | VpcService
    | Worker
    | DurableObjectNamespaceLike<any>;
  
-@@ -838,14 +840,20 @@ export const Worker: Platform<
-                                     name: bindingName,
-                                     id: binding.hyperdriveId,
-                                   }
--                                : isWorker(binding)
-+                                : binding.Type === "Cloudflare.VpcService"
-                                   ? {
--                                      type: "service",
-+                                      type: "vpc_service",
-                                       name: bindingName,
--                                      service: binding.workerName,
-+                                      serviceId: binding.serviceId,
-                                     }
--                                  : // TODO(sam): handle others
--                                    undefined;
-+                                  : isWorker(binding)
-+                                    ? {
-+                                        type: "service",
-+                                        name: bindingName,
-+                                        service: binding.workerName,
-+                                      }
-+                                    : // TODO(sam): handle others
-+                                      undefined;
- 
-         if (bindingMeta) {
-           yield* resource.bind`${bindingName}`({
