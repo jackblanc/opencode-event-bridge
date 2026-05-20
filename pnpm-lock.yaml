@@ -9,7 +9,7 @@ patchedDependencies:
     hash: 4585474b5d81d3edb451ecbdd94b26829b4ceb794bc1e3939e382bba52871db1
     path: patches/@distilled.cloud__cloudflare@0.20.2.patch
   alchemy@2.0.0-beta.39:
-    hash: bcdac62687e7b6b2341811f3527e1166163f01b35e9366eaae1fe3c36a581d8a
+    hash: 948b48f25b0ce2cdc300cb9781b60935d1276469479031e671c564eab92f9a75
     path: patches/alchemy@2.0.0-beta.39.patch
 
 importers:
@@ -24,7 +24,7 @@ importers:
         version: 1.15.3
       alchemy:
         specifier: 2.0.0-beta.39
-        version: 2.0.0-beta.39(patch_hash=bcdac62687e7b6b2341811f3527e1166163f01b35e9366eaae1fe3c36a581d8a)(@effect/platform-node@4.0.0-beta.66(effect@4.0.0-beta.66)(ioredis@5.10.1))(effect@4.0.0-beta.66)(typescript@6.0.3)(vite@8.0.13(@types/node@25.8.0)(jiti@2.7.0)(yaml@2.9.0))(vitest@4.1.6(@types/node@25.8.0)(vite@8.0.13(@types/node@25.8.0)(jiti@2.7.0)(yaml@2.9.0)))(workerd@1.20260515.1)(ws@8.20.1)
+        version: 2.0.0-beta.39(patch_hash=948b48f25b0ce2cdc300cb9781b60935d1276469479031e671c564eab92f9a75)(@effect/platform-node@4.0.0-beta.66(effect@4.0.0-beta.66)(ioredis@5.10.1))(effect@4.0.0-beta.66)(typescript@6.0.3)(vite@8.0.13(@types/node@25.8.0)(jiti@2.7.0)(yaml@2.9.0))(vitest@4.1.6(@types/node@25.8.0)(vite@8.0.13(@types/node@25.8.0)(jiti@2.7.0)(yaml@2.9.0)))(workerd@1.20260515.1)(ws@8.20.1)
       effect:
         specifier: 4.0.0-beta.66
         version: 4.0.0-beta.66
@@ -3469,7 +3469,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  alchemy@2.0.0-beta.39(patch_hash=bcdac62687e7b6b2341811f3527e1166163f01b35e9366eaae1fe3c36a581d8a)(@effect/platform-node@4.0.0-beta.66(effect@4.0.0-beta.66)(ioredis@5.10.1))(effect@4.0.0-beta.66)(typescript@6.0.3)(vite@8.0.13(@types/node@25.8.0)(jiti@2.7.0)(yaml@2.9.0))(vitest@4.1.6(@types/node@25.8.0)(vite@8.0.13(@types/node@25.8.0)(jiti@2.7.0)(yaml@2.9.0)))(workerd@1.20260515.1)(ws@8.20.1):
+  alchemy@2.0.0-beta.39(patch_hash=948b48f25b0ce2cdc300cb9781b60935d1276469479031e671c564eab92f9a75)(@effect/platform-node@4.0.0-beta.66(effect@4.0.0-beta.66)(ioredis@5.10.1))(effect@4.0.0-beta.66)(typescript@6.0.3)(vite@8.0.13(@types/node@25.8.0)(jiti@2.7.0)(yaml@2.9.0))(vitest@4.1.6(@types/node@25.8.0)(vite@8.0.13(@types/node@25.8.0)(jiti@2.7.0)(yaml@2.9.0)))(workerd@1.20260515.1)(ws@8.20.1):
     dependencies:
       '@aws-sdk/credential-providers': 3.1047.0
       '@clack/prompts': 0.11.0

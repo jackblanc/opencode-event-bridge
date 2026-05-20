@@ -123,7 +123,7 @@ index 0000000000000000000000000000000000000000..7b9dabb270d46a085a59827f876a463a
 +                const web = yield* HttpServerRequest.toWeb(HttpServerRequest.fromClientRequest(request)).pipe(Effect.orDie);
 +                const response = yield* Effect.tryPromise({
 +                    try: async (signal) => {
-+                        const value = await fetch(web, { signal });
++                        const value = await Reflect.apply(fetch, binding, [web, { signal }]);
 +                        if (value instanceof Response) {
 +                            return value;
 +                        }
@@ -272,7 +272,7 @@ index 0000000000000000000000000000000000000000..a83c34324e5f6bdcd9d560a31bffaa1e
 +            ).pipe(Effect.orDie);
 +            const response = yield* Effect.tryPromise({
 +              try: async (signal) => {
-+                const value: unknown = await fetch(web, { signal });
++                const value: unknown = await Reflect.apply(fetch, binding, [web, { signal }]);
 +                if (value instanceof Response) {
 +                  return value;
 +                }

@@ -21,7 +21,7 @@ import { receiveLinearWebhook } from "../linear/webhook/receive.ts";
 
 export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebhookReceiver>()(
   "LinearWebhookReceiver",
-  { main: import.meta.filename },
+  { main: import.meta.filename, name: "opencode-event-bridge-linear-webhook" },
   Effect.gen(function* () {
     const queueResource = yield* LinearWebhookQueue;
     const queue = yield* Cloudflare.QueueBinding.bind(queueResource);

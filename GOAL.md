@@ -36,6 +36,14 @@ The bridge should be structured around a small domain workflow with infrastructu
 
 The workflow should not depend on Alchemy resource definitions, Cloudflare request handlers, OpenCode plugin state, or OpenCode filesystem access.
 
+### OpenCode Runtime Access
+
+The current default path is Workers VPC to a locally running OpenCode server. The VPC Service owns the private routing target; Cloudflare Tunnel public ingress is not part of the Worker-to-OpenCode path.
+
+Local OpenCode must not be exposed through a public hostname. If Workers VPC cannot reach the local loopback listener directly, use a local-only private address or proxy target instead of a public tunnel.
+
+Cloudflare Containers are a candidate for reproducible execution, but they require an explicit workspace materialization strategy. OpenCode's remote workspace sync handles session/event state between OpenCode instances; it does not by itself sync local repository files or uncommitted working tree changes into a container.
+
 ## Critical User Journeys
 
 ### Install
@@ -52,7 +60,7 @@ The bridge receives the Linear Agent Session webhook, verifies it, accepts it qu
 
 The bridge determines which OpenCode project should handle the issue.
 
-The MVP signal is a Linear issue label using the existing `repo:*` convention. If the repository is missing or unclear, the bridge asks the user to choose and then continues the original request.
+The MVP signal is a Linear issue label using the existing `repo:*` convention. If the repository is missing or unclear, the bridge posts a clear error activity. Repository selection elicitations are deferred.
 
 ### Run OpenCode
 
@@ -79,7 +87,7 @@ If the bridge cannot continue, it posts a clear Linear error activity instead of
 - Webhook verification works.
 - The bridge acknowledges accepted work quickly.
 - Repository routing works from `repo:*` labels.
-- Missing or unclear repository routing asks the user to choose and then resumes work.
+- Missing or unclear repository routing posts a useful Linear error activity.
 - OpenCode work starts in the right project/workspace.
 - Follow-up prompts in the same Linear Agent Session continue the same OpenCode session.
 - Linear gets a processing update with an OpenCode link when available.
@@ -94,7 +102,7 @@ Keep only the state required to continue the journeys above:
 - Linear organization auth.
 - Linear issue to OpenCode workspace/project association.
 - Linear Agent Session to OpenCode session association.
-- Pending repository selection.
+- Pending repository selection is deferred until repository selection elicitations are implemented.
 
 Use Cloudflare stateful primitives.
 
@@ -104,7 +112,7 @@ Use Cloudflare stateful primitives.
 - Keep workflow logic in Effect services.
 - Parse external inputs at boundaries.
 - Target the latest OpenCode API and verify exact API shapes from current source/docs during implementation.
-- Use OpenCode's `session.completed` event to detect completion.
+- Detect OpenCode completion from the latest available OpenCode API. Current API exposes completed assistant messages, not a `session.completed` event.
 - Do not couple the bridge to the OpenCode server filesystem or plugin runtime.
 
 ## Out Of Scope For Phase 1
@@ -116,7 +124,7 @@ Use Cloudflare stateful primitives.
 - Linear plan updates.
 - Interactive OpenCode question handling.
 - Permission approval flow.
-- General elicitation beyond repository selection.
+- Repository selection and general elicitation.
 - Automatic Linear issue status transitions.
 - Cleanup when issues complete or cancel.
 - Migration of old v1 file state.

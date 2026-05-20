@@ -33,6 +33,16 @@ const AgentSessionWebhookPayload = Schema.StructWithRest(
         description: OptionalString,
         id: Schema.String,
         identifier: Schema.String,
+        labels: Schema.optionalKey(
+          Schema.Array(
+            Schema.StructWithRest(
+              Schema.Struct({
+                name: Schema.String,
+              }),
+              [ExtraFields],
+            ),
+          ),
+        ),
         team: Schema.StructWithRest(
           Schema.Struct({
             id: Schema.String,

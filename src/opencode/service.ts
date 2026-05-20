@@ -1,8 +1,10 @@
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 
+import { openCodePrivateHost } from "./config.ts";
+
 const OpenCodeTunnel = Cloudflare.Tunnel("OpenCodeTunnel", {
-  ingress: [{ service: "http://localhost:4096" }],
+  ingress: [{ service: "http_status:404" }],
 });
 
 export const OpenCodeVpcService = Effect.gen(function* () {
@@ -10,8 +12,8 @@ export const OpenCodeVpcService = Effect.gen(function* () {
 
   return yield* Cloudflare.VpcService("OpenCodeVpcService", {
     host: {
-      hostname: "localhost",
-      resolverNetwork: { tunnelId: tunnel.tunnelId },
+      ipv4: openCodePrivateHost,
+      network: { tunnelId: tunnel.tunnelId },
     },
     httpPort: 4096,
   });

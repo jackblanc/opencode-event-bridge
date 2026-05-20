@@ -6,6 +6,8 @@ The only event source right now is Linear. In the future, we could add support f
 
 This project is an evolution of ~/projects/opencode-linear-agent, but written in Effect TypeScript instead of raw TS.
 
+This project has no users. Do not worry about breaking changes or backwards compatibility, ever. Produce clean, optimal, and maintainable code.
+
 ## Commands
 
 - Use pnpm only: `pnpm install`, `pnpm run ...`.
