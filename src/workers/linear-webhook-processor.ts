@@ -16,6 +16,10 @@ import { LinearWebhookPayload } from "../linear/webhook/payload.ts";
 import { LinearWebhookQueue } from "../linear/webhook/queue.ts";
 import { makeOpenCodeClient, OpenCodeClient } from "../opencode/client.ts";
 import { openCodePrivateHost, openCodePrivatePort } from "../opencode/config.ts";
+import OpenCodeRunObserver, {
+  makeOpenCodeRunObserverService,
+  OpenCodeRunObserverService,
+} from "../opencode/run-observer.ts";
 import { OpenCodeVpcService } from "../opencode/service.ts";
 
 export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebhookProcessor>()(
@@ -30,6 +34,7 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
     const opencodeService = yield* OpenCodeVpcService.pipe(Effect.orDie);
     const bindVpcService = yield* Cloudflare.VpcServiceBinding;
     const opencodeBinding = yield* bindVpcService(opencodeService);
+    const observers = yield* OpenCodeRunObserver;
     const linear = yield* LinearHttpClient;
 
     yield* Cloudflare.messages(queueResource).subscribe((stream) =>
@@ -81,6 +86,7 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
               return webResponse;
             };
             const opencode = makeOpenCodeClient(fetchOpenCode);
+            const observer = makeOpenCodeRunObserverService(observers);
             const payloadOption = yield* Schema.decodeUnknownEffect(LinearWebhookPayload)(
               msg.body,
             ).pipe(
@@ -99,6 +105,7 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
               Effect.provideService(LinearOrgAuthStore, orgAuth),
               Effect.provideService(LinearSessionStore, store),
               Effect.provideService(OpenCodeClient, opencode),
+              Effect.provideService(OpenCodeRunObserverService, observer),
             );
 
             yield* Effect.log("linear webhook processed", {

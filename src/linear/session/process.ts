@@ -5,6 +5,7 @@ import type { LinearWebhookPayload } from "../webhook/payload.ts";
 
 import { OpenCodeClient } from "../../opencode/client.ts";
 import { openCodeWebBaseUrl } from "../../opencode/config.ts";
+import { OpenCodeRunObserverService } from "../../opencode/run-observer.ts";
 import { LinearHttpClient } from "../client/client.ts";
 import { LinearOrgAuthStore } from "../oauth/auth.ts";
 import { LinearSessionStore, LinearSessionStoreError } from "./store.ts";
@@ -153,6 +154,7 @@ export const processLinearWebhook = (payload: LinearWebhookPayload) =>
   Effect.gen(function* () {
     const store = yield* LinearSessionStore;
     const opencode = yield* OpenCodeClient;
+    const observer = yield* OpenCodeRunObserverService;
     const linear = yield* LinearHttpClient;
     const authStore = yield* LinearOrgAuthStore;
 
@@ -310,8 +312,8 @@ export const processLinearWebhook = (payload: LinearWebhookPayload) =>
             ),
           );
 
-        const response = yield* opencode
-          .sendMessage({
+        yield* opencode
+          .promptAsync({
             body: payload.promptContext,
             sessionId: session.id,
             workspaceDirectory,
@@ -321,14 +323,16 @@ export const processLinearWebhook = (payload: LinearWebhookPayload) =>
               (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
             ),
           );
-        yield* Effect.log("linear session opencode response received", {
+        yield* observer.start({
+          accessToken: orgAuth.accessToken,
+          linearAgentSessionId: payload.agentSession.id,
+          linearIssueIdentifier: payload.agentSession.issue.identifier,
+          opencodeSessionId: session.id,
+          opencodeWorkspaceDirectory: workspaceDirectory,
+        });
+        yield* Effect.log("linear session opencode observer started", {
           issueIdentifier: payload.agentSession.issue.identifier,
           opencodeSessionId: session.id,
-        });
-
-        yield* postActivity({
-          body: response.body,
-          type: "response",
         });
 
         return "created";
@@ -354,8 +358,8 @@ export const processLinearWebhook = (payload: LinearWebhookPayload) =>
         return yield* new LinearSessionStoreError({ reason: "MissingAgentSession" });
       }
 
-      const response = yield* opencode
-        .sendMessage({
+      yield* opencode
+        .promptAsync({
           body: payload.agentActivity.content.body,
           sessionId: record.opencodeSessionId,
           workspaceDirectory: record.opencodeWorkspaceDirectory,
@@ -366,9 +370,12 @@ export const processLinearWebhook = (payload: LinearWebhookPayload) =>
           ),
         );
 
-      yield* postActivity({
-        body: response.body,
-        type: "response",
+      yield* observer.start({
+        accessToken: orgAuth.accessToken,
+        linearAgentSessionId: payload.agentSession.id,
+        linearIssueIdentifier: payload.agentSession.issue.identifier,
+        opencodeSessionId: record.opencodeSessionId,
+        opencodeWorkspaceDirectory: record.opencodeWorkspaceDirectory,
       });
       return "prompted";
     });

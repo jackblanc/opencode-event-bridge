@@ -47,7 +47,7 @@ To understand the Agent API, read the web documentation:
 
 ## Triage
 
-- For deployed Worker failures, check runtime logs first with Wrangler (`pnpm exec wrangler tail <worker>`) and reproduce against the deployed URL while tailing. Do not infer production failures from local code alone.
+- For deployed Worker failures, use Cloudflare Observability/query APIs for logs and reproduce against the deployed URL. Do not infer production failures from local code alone.
 
 ## Code Conventions
 

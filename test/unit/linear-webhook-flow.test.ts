@@ -12,6 +12,7 @@ import type {
   LinearIssueWorktreeKey,
 } from "../../src/linear/session/store.ts";
 import type { LinearWebhookPayload } from "../../src/linear/webhook/payload.ts";
+import type { OpenCodeRunRecord } from "../../src/opencode/run-observer.ts";
 
 import { LinearHttpClient } from "../../src/linear/client/client.ts";
 import { LinearOrgAuthStore } from "../../src/linear/oauth/auth.ts";
@@ -19,6 +20,7 @@ import { processLinearWebhook } from "../../src/linear/session/process.ts";
 import { LinearSessionStore, makeLinearSessionStore } from "../../src/linear/session/store.ts";
 import { receiveLinearWebhook } from "../../src/linear/webhook/receive.ts";
 import { makeOpenCodeClient, OpenCodeClient } from "../../src/opencode/client.ts";
+import { OpenCodeRunObserverService } from "../../src/opencode/run-observer.ts";
 
 const secret = "linear-webhook-secret";
 const opencodeBaseUrl = "http://127.0.0.1:4096";
@@ -295,6 +297,7 @@ describe("Linear webhook to OpenCode", () => {
           readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
         }>
       >([]);
+      const runs = yield* Ref.make<ReadonlyArray<OpenCodeRunRecord>>([]);
       const payload = createdPayload();
       const rawBody = rawBodyOf(payload);
       const signature = yield* sign(rawBody);
@@ -319,12 +322,18 @@ describe("Linear webhook to OpenCode", () => {
           Layer.succeed(OpenCodeClient)(
             makeOpenCodeClient(makeRecordingFetch(requests), opencodeBaseUrl),
           ),
+          Layer.succeed(OpenCodeRunObserverService)(
+            OpenCodeRunObserverService.of({
+              start: (run) => Ref.update(runs, (items) => [...items, run]),
+            }),
+          ),
         ]),
       );
 
       const observed = yield* Ref.get(requests);
       const observedActivities = yield* Ref.get(activities);
       const observedLinks = yield* Ref.get(links);
+      const observedRuns = yield* Ref.get(runs);
 
       expect(observed).toEqual([
         {
@@ -345,31 +354,11 @@ describe("Linear webhook to OpenCode", () => {
           url: "http://127.0.0.1:4096/session?directory=%2Ftmp%2Fopencode%2Foeb-1",
         },
         {
-          body: null,
-          method: "GET",
-          url: "http://127.0.0.1:4096/session/opencode-session-id/message?directory=%2Ftmp%2Fopencode%2Foeb-1",
-        },
-        {
           body: {
             parts: [{ text: "start", type: "text" }],
           },
           method: "POST",
           url: "http://127.0.0.1:4096/session/opencode-session-id/prompt_async?directory=%2Ftmp%2Fopencode%2Foeb-1",
-        },
-        {
-          body: null,
-          method: "GET",
-          url: "http://127.0.0.1:4096/session/status?directory=%2Ftmp%2Fopencode%2Foeb-1",
-        },
-        {
-          body: null,
-          method: "GET",
-          url: "http://127.0.0.1:4096/session/status?directory=%2Ftmp%2Fopencode%2Foeb-1",
-        },
-        {
-          body: null,
-          method: "GET",
-          url: "http://127.0.0.1:4096/session/opencode-session-id/message?directory=%2Ftmp%2Fopencode%2Foeb-1",
         },
       ]);
       expect(observedActivities).toEqual([
@@ -377,9 +366,14 @@ describe("Linear webhook to OpenCode", () => {
           agentSessionId: "linear-session-id",
           content: { body: "Accepted. Starting OpenCode.", type: "thought" },
         },
+      ]);
+      expect(observedRuns).toEqual([
         {
-          agentSessionId: "linear-session-id",
-          content: { body: "done", type: "response" },
+          accessToken: "linear-access-token",
+          linearAgentSessionId: "linear-session-id",
+          linearIssueIdentifier: "OEB-1",
+          opencodeSessionId: "opencode-session-id",
+          opencodeWorkspaceDirectory: "/tmp/opencode/oeb-1",
         },
       ]);
       expect(observedLinks).toEqual([

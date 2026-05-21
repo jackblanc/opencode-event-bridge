@@ -1,3 +1,5 @@
+import type { Event } from "@opencode-ai/sdk/v2/client";
+
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { Schema } from "effect";
 import * as Context from "effect/Context";
@@ -14,11 +16,11 @@ class OpenCodeClientError extends Schema.TaggedErrorClass<OpenCodeClientError>()
       "ProjectAmbiguous",
       "RequestFailed",
       "InvalidResponse",
+      "SessionError",
+      "Timeout",
     ]),
   },
 ) {}
-
-const maxMessagePolls = 840;
 
 const detailFrom = (error: unknown) => {
   if (typeof error === "string") {
@@ -44,11 +46,19 @@ export type OpenCodeClientService = {
     readonly workspaceDirectory: string;
     readonly title: string;
   }) => Effect.Effect<{ readonly id: string }, OpenCodeClientError>;
-  readonly sendMessage: (input: {
+  readonly promptAsync: (input: {
     readonly sessionId: string;
     readonly workspaceDirectory: string;
     readonly body: string;
+  }) => Effect.Effect<void, OpenCodeClientError>;
+  readonly completedResponse: (input: {
+    readonly sessionId: string;
+    readonly workspaceDirectory: string;
   }) => Effect.Effect<{ readonly body: string }, OpenCodeClientError>;
+  readonly waitUntilIdle: (input: {
+    readonly sessionId: string;
+    readonly workspaceDirectory: string;
+  }) => Effect.Effect<void, OpenCodeClientError>;
 };
 
 export class OpenCodeClient extends Context.Service<OpenCodeClient, OpenCodeClientService>()(
@@ -116,13 +126,9 @@ const responseBody = (
     };
     readonly parts: ReadonlyArray<{ readonly text?: string; readonly type: string }>;
   }>,
-  previousCompletedAssistantIds: ReadonlySet<string>,
 ) => {
   const message = messages.findLast(
-    (item) =>
-      item.info.role === "assistant" &&
-      item.info.time.completed !== undefined &&
-      !previousCompletedAssistantIds.has(item.info.id),
+    (item) => item.info.role === "assistant" && item.info.time.completed !== undefined,
   );
 
   if (message === undefined) {
@@ -136,9 +142,29 @@ const responseBody = (
 };
 
 const sessionIsIdle = (
-  statuses: Readonly<Record<string, { readonly type: string }>>,
+  status: { readonly [key: string]: { readonly type: string } },
   sessionId: string,
-) => statuses[sessionId]?.type === "idle";
+) => {
+  const item = status[sessionId];
+  return item === undefined || item.type === "idle";
+};
+
+const eventIsIdle = (event: Event, sessionId: string) =>
+  (event.type === "session.idle" && event.properties.sessionID === sessionId) ||
+  (event.type === "session.status" &&
+    event.properties.sessionID === sessionId &&
+    event.properties.status.type === "idle");
+
+const eventSessionError = (event: Event, sessionId: string) => {
+  if (event.type !== "session.error" || event.properties.sessionID !== sessionId) {
+    return undefined;
+  }
+
+  return detailFrom(event.properties.error);
+};
+
+const waitMillis = 250;
+const maxWaitMillis = 10 * 60 * 1_000;
 
 const basename = (path: string) => {
   const parts = path.split("/").filter((part) => part.length > 0);
@@ -162,47 +188,132 @@ export const makeOpenCodeClient = (
       }),
     );
 
-  const sessionStatuses = (input: { readonly workspaceDirectory: string }) =>
-    resultData(
-      client.session.status({
-        directory: input.workspaceDirectory,
-      }),
-    );
-
-  const waitForResponse = (
-    input: { readonly sessionId: string; readonly workspaceDirectory: string },
-    previousCompletedAssistantIds: ReadonlySet<string>,
-    remainingPolls: number,
-  ): Effect.Effect<{ readonly body: string }, OpenCodeClientError> =>
-    sessionStatuses(input).pipe(
-      Effect.flatMap((statuses) => {
-        if (sessionIsIdle(statuses, input.sessionId)) {
-          return sessionMessages(input).pipe(
-            Effect.flatMap((messages) => {
-              const body = responseBody(messages, previousCompletedAssistantIds);
-
-              if (body !== undefined) {
-                return Effect.succeed({ body });
-              }
-
-              return new OpenCodeClientError({ reason: "InvalidResponse" });
-            }),
-          );
-        }
-
-        if (remainingPolls <= 0) {
-          return new OpenCodeClientError({ reason: "RequestFailed" });
-        }
-
-        return Effect.sleep("1 second").pipe(
-          Effect.flatMap(() =>
-            waitForResponse(input, previousCompletedAssistantIds, remainingPolls - 1),
-          ),
-        );
-      }),
-    );
-
   return OpenCodeClient.of({
+    completedResponse: (input) =>
+      sessionMessages(input).pipe(
+        Effect.flatMap((messages) => {
+          const body = responseBody(messages);
+
+          if (body !== undefined) {
+            return Effect.succeed({ body });
+          }
+
+          return new OpenCodeClientError({ reason: "InvalidResponse" });
+        }),
+      ),
+    waitUntilIdle: (input) =>
+      resultData(client.session.status({ directory: input.workspaceDirectory })).pipe(
+        Effect.flatMap((status) => {
+          if (sessionIsIdle(status, input.sessionId)) {
+            return Effect.void;
+          }
+
+          return Effect.tryPromise({
+            catch: (cause) =>
+              new OpenCodeClientError({ detail: detailFrom(cause), reason: "RequestFailed" }),
+            try: async () => {
+              await Promise.resolve();
+              return new Promise<void>((resolve, reject) => {
+                const controller = new AbortController();
+                const started = Date.now();
+                let settled = false;
+
+                const settle = (result: Effect.Effect<void, OpenCodeClientError>) => {
+                  if (settled) {
+                    return;
+                  }
+
+                  settled = true;
+                  controller.abort();
+                  Effect.runPromise(result).then(resolve, reject);
+                };
+
+                const poll = () => {
+                  if (settled) {
+                    return;
+                  }
+
+                  if (Date.now() - started > maxWaitMillis) {
+                    settle(new OpenCodeClientError({ reason: "Timeout" }));
+                    return;
+                  }
+
+                  client.session.status({ directory: input.workspaceDirectory }).then(
+                    (result) => {
+                      if (result.error !== undefined) {
+                        settle(
+                          new OpenCodeClientError({
+                            detail: detailFrom(result.error),
+                            reason: "RequestFailed",
+                          }),
+                        );
+                        return;
+                      }
+
+                      if (sessionIsIdle(result.data, input.sessionId)) {
+                        settle(Effect.void);
+                        return;
+                      }
+
+                      setTimeout(poll, waitMillis);
+                    },
+                    (cause: unknown) => {
+                      settle(
+                        new OpenCodeClientError({
+                          detail: detailFrom(cause),
+                          reason: "RequestFailed",
+                        }),
+                      );
+                    },
+                  );
+                };
+
+                client.event
+                  .subscribe({ directory: input.workspaceDirectory }, { signal: controller.signal })
+                  .then(
+                    (events) => {
+                      void Promise.resolve()
+                        .then(async () => {
+                          for await (const event of events.stream) {
+                            if (eventIsIdle(event, input.sessionId)) {
+                              settle(Effect.void);
+                              return;
+                            }
+
+                            const detail = eventSessionError(event, input.sessionId);
+                            if (detail !== undefined) {
+                              settle(new OpenCodeClientError({ detail, reason: "SessionError" }));
+                              return;
+                            }
+                          }
+                        })
+                        .then(undefined, (cause: unknown) => {
+                          if (!settled) {
+                            settle(
+                              new OpenCodeClientError({
+                                detail: detailFrom(cause),
+                                reason: "RequestFailed",
+                              }),
+                            );
+                          }
+                        });
+                    },
+                    (cause: unknown) => {
+                      settle(
+                        new OpenCodeClientError({
+                          detail: detailFrom(cause),
+                          reason: "RequestFailed",
+                        }),
+                      );
+                    },
+                  );
+
+                poll();
+              });
+            },
+          });
+        }),
+      ),
     createSession: (input) =>
       resultData(
         client.session.create({
@@ -217,6 +328,14 @@ export const makeOpenCodeClient = (
           worktreeCreateInput: { name: input.branch },
         }),
       ).pipe(Effect.map((worktree) => ({ workspaceDirectory: worktree.directory }))),
+    promptAsync: (input) =>
+      resultVoid(
+        client.session.promptAsync({
+          directory: input.workspaceDirectory,
+          parts: [{ text: input.body, type: "text" }],
+          sessionID: input.sessionId,
+        }),
+      ),
     resolveProject: (input) =>
       resultData(client.project.list()).pipe(
         Effect.flatMap((projects) => {
@@ -243,31 +362,6 @@ export const makeOpenCodeClient = (
           }
 
           return Effect.succeed({ directory: project.worktree, id: project.id });
-        }),
-      ),
-    sendMessage: (input) =>
-      sessionMessages(input).pipe(
-        Effect.flatMap((messages) => {
-          const previousCompletedAssistantIds = new Set(
-            messages
-              .filter(
-                (message) =>
-                  message.info.role === "assistant" && message.info.time.completed !== undefined,
-              )
-              .map((message) => message.info.id),
-          );
-
-          return resultVoid(
-            client.session.promptAsync({
-              directory: input.workspaceDirectory,
-              parts: [{ text: input.body, type: "text" }],
-              sessionID: input.sessionId,
-            }),
-          ).pipe(
-            Effect.flatMap(() =>
-              waitForResponse(input, previousCompletedAssistantIds, maxMessagePolls),
-            ),
-          );
         }),
       ),
   });

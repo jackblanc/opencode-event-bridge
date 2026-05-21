@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   '@distilled.cloud/cloudflare@0.21.4':
-    hash: 53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28
+    hash: 0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7
     path: patches/@distilled.cloud__cloudflare@0.21.4.patch
   alchemy@2.0.0-beta.42:
     hash: a9fbf9f3e026e97e160f7e9c5bb6c631e4fc4225e7155eed2a09c3847ce9e64a
@@ -2725,9 +2725,9 @@ snapshots:
     transitivePeerDependencies:
       - workerd
 
-  '@distilled.cloud/cloudflare-runtime@0.5.4(@distilled.cloud/cloudflare@0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70)':
+  '@distilled.cloud/cloudflare-runtime@0.5.4(@distilled.cloud/cloudflare@0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70)':
     dependencies:
-      '@distilled.cloud/cloudflare': 0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70)
+      '@distilled.cloud/cloudflare': 0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70)
       capnweb: 0.7.0
       chokidar: 4.0.3
       effect: 4.0.0-beta.70
@@ -2736,11 +2736,11 @@ snapshots:
     optionalDependencies:
       '@effect/platform-node': 4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1)
 
-  '@distilled.cloud/cloudflare-vite-plugin@0.5.4(@distilled.cloud/cloudflare-runtime@0.5.4(@distilled.cloud/cloudflare@0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70))(@distilled.cloud/cloudflare@0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70)(rolldown@1.0.0-rc.17)(vite@8.0.13(@types/node@25.9.1)(jiti@2.7.0)(yaml@2.9.0))(workerd@1.20260515.1)':
+  '@distilled.cloud/cloudflare-vite-plugin@0.5.4(@distilled.cloud/cloudflare-runtime@0.5.4(@distilled.cloud/cloudflare@0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70))(@distilled.cloud/cloudflare@0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70)(rolldown@1.0.0-rc.17)(vite@8.0.13(@types/node@25.9.1)(jiti@2.7.0)(yaml@2.9.0))(workerd@1.20260515.1)':
     dependencies:
-      '@distilled.cloud/cloudflare': 0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70)
+      '@distilled.cloud/cloudflare': 0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70)
       '@distilled.cloud/cloudflare-rolldown-plugin': 0.5.4(rolldown@1.0.0-rc.17)(workerd@1.20260515.1)
-      '@distilled.cloud/cloudflare-runtime': 0.5.4(@distilled.cloud/cloudflare@0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70)
+      '@distilled.cloud/cloudflare-runtime': 0.5.4(@distilled.cloud/cloudflare@0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70)
       effect: 4.0.0-beta.70
       vite: 8.0.13(@types/node@25.9.1)(jiti@2.7.0)(yaml@2.9.0)
     optionalDependencies:
@@ -2749,7 +2749,7 @@ snapshots:
       - rolldown
       - workerd
 
-  '@distilled.cloud/cloudflare@0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70)':
+  '@distilled.cloud/cloudflare@0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70)':
     dependencies:
       '@distilled.cloud/core': 0.21.4(effect@4.0.0-beta.70)
       effect: 4.0.0-beta.70
@@ -3503,10 +3503,10 @@ snapshots:
       '@clack/prompts': 0.11.0
       '@distilled.cloud/aws': 0.21.4(effect@4.0.0-beta.70)
       '@distilled.cloud/axiom': 0.21.4(effect@4.0.0-beta.70)
-      '@distilled.cloud/cloudflare': 0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70)
+      '@distilled.cloud/cloudflare': 0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70)
       '@distilled.cloud/cloudflare-rolldown-plugin': 0.5.4(rolldown@1.0.0-rc.17)(workerd@1.20260515.1)
-      '@distilled.cloud/cloudflare-runtime': 0.5.4(@distilled.cloud/cloudflare@0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70)
-      '@distilled.cloud/cloudflare-vite-plugin': 0.5.4(@distilled.cloud/cloudflare-runtime@0.5.4(@distilled.cloud/cloudflare@0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70))(@distilled.cloud/cloudflare@0.21.4(patch_hash=53e38fb97bfa8f35bf4e3f48cc3817177f0f37fdcc5ba8e25510e3c5d021fe28)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70)(rolldown@1.0.0-rc.17)(vite@8.0.13(@types/node@25.9.1)(jiti@2.7.0)(yaml@2.9.0))(workerd@1.20260515.1)
+      '@distilled.cloud/cloudflare-runtime': 0.5.4(@distilled.cloud/cloudflare@0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70)
+      '@distilled.cloud/cloudflare-vite-plugin': 0.5.4(@distilled.cloud/cloudflare-runtime@0.5.4(@distilled.cloud/cloudflare@0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70))(@distilled.cloud/cloudflare@0.21.4(patch_hash=0e741fba533a467f50c5ffca9d379efa89a215abeeb0ed961f03a35eb2a706c7)(effect@4.0.0-beta.70))(@effect/platform-node@4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1))(effect@4.0.0-beta.70)(rolldown@1.0.0-rc.17)(vite@8.0.13(@types/node@25.9.1)(jiti@2.7.0)(yaml@2.9.0))(workerd@1.20260515.1)
       '@distilled.cloud/core': 0.21.4(effect@4.0.0-beta.70)
       '@distilled.cloud/neon': 0.21.4(effect@4.0.0-beta.70)
       '@effect/vitest': 4.0.0-beta.70(effect@4.0.0-beta.70)(vitest@4.1.7(@types/node@25.9.1)(vite@8.0.13(@types/node@25.9.1)(jiti@2.7.0)(yaml@2.9.0)))

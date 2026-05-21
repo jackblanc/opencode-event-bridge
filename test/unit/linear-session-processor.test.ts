@@ -12,6 +12,7 @@ import type {
 } from "../../src/linear/session/store.ts";
 import type { LinearWebhookPayload } from "../../src/linear/webhook/payload.ts";
 import type { OpenCodeClientService } from "../../src/opencode/client.ts";
+import type { OpenCodeRunRecord } from "../../src/opencode/run-observer.ts";
 
 import { LinearHttpClient } from "../../src/linear/client/client.ts";
 import { LinearOrgAuthStore } from "../../src/linear/oauth/auth.ts";
@@ -23,6 +24,15 @@ import {
   makeLinearSessionStore,
 } from "../../src/linear/session/store.ts";
 import { OpenCodeClient } from "../../src/opencode/client.ts";
+import { OpenCodeRunObserverService } from "../../src/opencode/run-observer.ts";
+
+const makeObserver = (runs: Array<OpenCodeRunRecord>) =>
+  OpenCodeRunObserverService.of({
+    start: (run) =>
+      Effect.sync(() => {
+        runs.push(run);
+      }).pipe(Effect.asVoid),
+  });
 
 const makeKv = (seed?: ReadonlyMap<string, string>) => {
   const values = new Map(seed);
@@ -173,6 +183,7 @@ describe("processLinearWebhook", () => {
       readonly sessionId: string;
       readonly workspaceDirectory: string;
     }> = [];
+    const runs: Array<OpenCodeRunRecord> = [];
     const activities: Array<{
       readonly agentSessionId: string;
       readonly content: LinearAgentActivityContent;
@@ -200,11 +211,12 @@ describe("processLinearWebhook", () => {
             id: "project-id",
           };
         }),
-      sendMessage: (input) =>
+      completedResponse: () => Effect.succeed({ body: "OpenCode finished" }),
+      waitUntilIdle: () => Effect.void,
+      promptAsync: (input) =>
         Effect.sync(() => {
           messages.push(input);
-          return { body: "OpenCode finished" };
-        }),
+        }).pipe(Effect.asVoid),
     };
 
     await Effect.runPromise(
@@ -214,6 +226,7 @@ describe("processLinearWebhook", () => {
           Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
           Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
           Layer.succeed(OpenCodeClient)(opencode),
+          Layer.succeed(OpenCodeRunObserverService)(makeObserver(runs)),
         ]),
       ),
     );
@@ -236,9 +249,14 @@ describe("processLinearWebhook", () => {
         agentSessionId: "linear-session-id",
         content: { body: "Accepted. Starting OpenCode.", type: "thought" },
       },
+    ]);
+    expect(runs).toEqual([
       {
-        agentSessionId: "linear-session-id",
-        content: { body: "OpenCode finished", type: "response" },
+        accessToken: "linear-access-token",
+        linearAgentSessionId: "linear-session-id",
+        linearIssueIdentifier: "OEB-1",
+        opencodeSessionId: "opencode-session-id",
+        opencodeWorkspaceDirectory: "/tmp/opencode/oeb-1",
       },
     ]);
     expect(links).toEqual([
@@ -306,6 +324,7 @@ describe("processLinearWebhook", () => {
       readonly agentSessionId: string;
       readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
     }> = [];
+    const runs: Array<OpenCodeRunRecord> = [];
     const opencode: OpenCodeClientService = {
       createSession: (input) =>
         Effect.sync(() => {
@@ -318,11 +337,12 @@ describe("processLinearWebhook", () => {
           return { workspaceDirectory: "unused" };
         }),
       resolveProject: () => Effect.succeed({ directory: "unused", id: "unused" }),
-      sendMessage: (input) =>
+      completedResponse: () => Effect.succeed({ body: "unused" }),
+      waitUntilIdle: () => Effect.void,
+      promptAsync: (input) =>
         Effect.sync(() => {
           messages.push(input);
-          return { body: "unused" };
-        }),
+        }).pipe(Effect.asVoid),
     };
 
     await Effect.runPromise(
@@ -332,6 +352,7 @@ describe("processLinearWebhook", () => {
           Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
           Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
           Layer.succeed(OpenCodeClient)(opencode),
+          Layer.succeed(OpenCodeRunObserverService)(makeObserver(runs)),
         ]),
       ),
     );
@@ -357,7 +378,9 @@ describe("processLinearWebhook", () => {
       createSession: () => Effect.succeed({ id: "unused" }),
       createWorktree: () => Effect.succeed({ workspaceDirectory: "unused" }),
       resolveProject: () => Effect.succeed({ directory: "unused", id: "unused" }),
-      sendMessage: () => Effect.succeed({ body: "unused" }),
+      completedResponse: () => Effect.succeed({ body: "unused" }),
+      waitUntilIdle: () => Effect.void,
+      promptAsync: () => Effect.void,
     };
 
     await Effect.runPromise(
@@ -367,6 +390,7 @@ describe("processLinearWebhook", () => {
           Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
           Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
           Layer.succeed(OpenCodeClient)(opencode),
+          Layer.succeed(OpenCodeRunObserverService)(makeObserver([])),
         ]),
       ),
     );
@@ -401,7 +425,9 @@ describe("processLinearWebhook", () => {
       createSession: () => Effect.succeed({ id: "unused" }),
       createWorktree: () => Effect.succeed({ workspaceDirectory: "unused" }),
       resolveProject: () => Effect.succeed({ directory: "unused", id: "unused" }),
-      sendMessage: () => Effect.succeed({ body: "unused" }),
+      completedResponse: () => Effect.succeed({ body: "unused" }),
+      waitUntilIdle: () => Effect.void,
+      promptAsync: () => Effect.void,
     };
 
     await Effect.runPromise(
@@ -416,6 +442,7 @@ describe("processLinearWebhook", () => {
           Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
           Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
           Layer.succeed(OpenCodeClient)(opencode),
+          Layer.succeed(OpenCodeRunObserverService)(makeObserver([])),
         ]),
       ),
     );
@@ -447,6 +474,7 @@ describe("processLinearWebhook", () => {
       readonly agentSessionId: string;
       readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
     }> = [];
+    const runs: Array<OpenCodeRunRecord> = [];
     const opencode: OpenCodeClientService = {
       createSession: () => Effect.succeed({ id: "opencode-session-id" }),
       createWorktree: (input) =>
@@ -462,7 +490,9 @@ describe("processLinearWebhook", () => {
             id: "project-id",
           };
         }),
-      sendMessage: () => Effect.succeed({ body: "done" }),
+      completedResponse: () => Effect.succeed({ body: "done" }),
+      waitUntilIdle: () => Effect.void,
+      promptAsync: () => Effect.void,
     };
 
     await Effect.runPromise(
@@ -476,6 +506,7 @@ describe("processLinearWebhook", () => {
           Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
           Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
           Layer.succeed(OpenCodeClient)(opencode),
+          Layer.succeed(OpenCodeRunObserverService)(makeObserver(runs)),
         ]),
       ),
     );
@@ -513,15 +544,17 @@ describe("processLinearWebhook", () => {
       readonly agentSessionId: string;
       readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
     }> = [];
+    const runs: Array<OpenCodeRunRecord> = [];
     const opencode: OpenCodeClientService = {
       createSession: () => Effect.succeed({ id: "unused" }),
       createWorktree: () => Effect.succeed({ workspaceDirectory: "unused" }),
       resolveProject: () => Effect.succeed({ directory: "unused", id: "unused" }),
-      sendMessage: (input) =>
+      completedResponse: () => Effect.succeed({ body: "continued" }),
+      waitUntilIdle: () => Effect.void,
+      promptAsync: (input) =>
         Effect.sync(() => {
           messages.push(input);
-          return { body: "continued" };
-        }),
+        }).pipe(Effect.asVoid),
     };
 
     await Effect.runPromise(
@@ -531,6 +564,7 @@ describe("processLinearWebhook", () => {
           Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
           Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
           Layer.succeed(OpenCodeClient)(opencode),
+          Layer.succeed(OpenCodeRunObserverService)(makeObserver(runs)),
         ]),
       ),
     );
@@ -547,9 +581,14 @@ describe("processLinearWebhook", () => {
         agentSessionId: "linear-session-id",
         content: { body: "Accepted. Continuing OpenCode.", type: "thought" },
       },
+    ]);
+    expect(runs).toEqual([
       {
-        agentSessionId: "linear-session-id",
-        content: { body: "continued", type: "response" },
+        accessToken: "linear-access-token",
+        linearAgentSessionId: "linear-session-id",
+        linearIssueIdentifier: "OEB-1",
+        opencodeSessionId: "opencode-session-id",
+        opencodeWorkspaceDirectory: "/tmp/opencode/oeb-1",
       },
     ]);
     expect(links).toEqual([]);
@@ -569,7 +608,9 @@ describe("processLinearWebhook", () => {
       createSession: () => Effect.succeed({ id: "unused" }),
       createWorktree: () => Effect.succeed({ workspaceDirectory: "unused" }),
       resolveProject: () => Effect.succeed({ directory: "unused", id: "unused" }),
-      sendMessage: () => Effect.succeed({ body: "unused" }),
+      completedResponse: () => Effect.succeed({ body: "unused" }),
+      waitUntilIdle: () => Effect.void,
+      promptAsync: () => Effect.void,
     };
 
     await Effect.runPromise(
@@ -579,6 +620,7 @@ describe("processLinearWebhook", () => {
           Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
           Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
           Layer.succeed(OpenCodeClient)(opencode),
+          Layer.succeed(OpenCodeRunObserverService)(makeObserver([])),
         ]),
       ),
     );
