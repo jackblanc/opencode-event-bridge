@@ -29,6 +29,7 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
   Stack.useSync((stack) => ({
     main: import.meta.filename,
     name: makeStageWorkerName(stack.stage, "event-processor"),
+    url: false,
   })),
   Effect.gen(function* () {
     const queueResource = yield* LinearWebhookQueue;
