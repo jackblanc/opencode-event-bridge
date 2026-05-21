@@ -72,6 +72,8 @@ export class LinearSessionStore extends Context.Service<
 export class LinearSessionStoreError extends Schema.TaggedErrorClass<LinearSessionStoreError>()(
   "LinearSessionStoreError",
   {
+    cause: Schema.optional(Schema.Defect),
+    key: Schema.optional(Schema.String),
     reason: Schema.Literals(["InvalidRecord", "MissingAgentSession", "StoreFailure"]),
   },
 ) {}
@@ -95,7 +97,11 @@ const getIssueWorktreeRecord = <R>(input: {
   Effect.gen(function* () {
     const value = yield* input.kv
       .get(input.key)
-      .pipe(Effect.mapError(() => new LinearSessionStoreError({ reason: "StoreFailure" })));
+      .pipe(
+        Effect.mapError(
+          (cause) => new LinearSessionStoreError({ cause, key: input.key, reason: "StoreFailure" }),
+        ),
+      );
 
     if (value === null) {
       return null;
@@ -103,7 +109,11 @@ const getIssueWorktreeRecord = <R>(input: {
 
     return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(LinearIssueWorktreeRecord))(
       value,
-    ).pipe(Effect.mapError(() => new LinearSessionStoreError({ reason: "InvalidRecord" })));
+    ).pipe(
+      Effect.mapError(
+        (cause) => new LinearSessionStoreError({ cause, key: input.key, reason: "InvalidRecord" }),
+      ),
+    );
   });
 
 const getAgentSessionRecord = <R>(input: {
@@ -113,7 +123,11 @@ const getAgentSessionRecord = <R>(input: {
   Effect.gen(function* () {
     const value = yield* input.kv
       .get(input.key)
-      .pipe(Effect.mapError(() => new LinearSessionStoreError({ reason: "StoreFailure" })));
+      .pipe(
+        Effect.mapError(
+          (cause) => new LinearSessionStoreError({ cause, key: input.key, reason: "StoreFailure" }),
+        ),
+      );
 
     if (value === null) {
       return null;
@@ -121,7 +135,11 @@ const getAgentSessionRecord = <R>(input: {
 
     return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(LinearAgentSessionRecord))(
       value,
-    ).pipe(Effect.mapError(() => new LinearSessionStoreError({ reason: "InvalidRecord" })));
+    ).pipe(
+      Effect.mapError(
+        (cause) => new LinearSessionStoreError({ cause, key: input.key, reason: "InvalidRecord" }),
+      ),
+    );
   });
 
 const putIssueWorktreeRecord = <R>(input: {
@@ -130,11 +148,18 @@ const putIssueWorktreeRecord = <R>(input: {
   readonly record: LinearIssueWorktreeRecord;
 }) =>
   Schema.encodeEffect(Schema.fromJsonString(LinearIssueWorktreeRecord))(input.record).pipe(
-    Effect.mapError(() => new LinearSessionStoreError({ reason: "InvalidRecord" })),
+    Effect.mapError(
+      (cause) => new LinearSessionStoreError({ cause, key: input.key, reason: "InvalidRecord" }),
+    ),
     Effect.flatMap((value) =>
       input.kv
         .put(input.key, value)
-        .pipe(Effect.mapError(() => new LinearSessionStoreError({ reason: "StoreFailure" }))),
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new LinearSessionStoreError({ cause, key: input.key, reason: "StoreFailure" }),
+          ),
+        ),
     ),
   );
 
@@ -144,11 +169,18 @@ const putAgentSessionRecord = <R>(input: {
   readonly record: LinearAgentSessionRecord;
 }) =>
   Schema.encodeEffect(Schema.fromJsonString(LinearAgentSessionRecord))(input.record).pipe(
-    Effect.mapError(() => new LinearSessionStoreError({ reason: "InvalidRecord" })),
+    Effect.mapError(
+      (cause) => new LinearSessionStoreError({ cause, key: input.key, reason: "InvalidRecord" }),
+    ),
     Effect.flatMap((value) =>
       input.kv
         .put(input.key, value)
-        .pipe(Effect.mapError(() => new LinearSessionStoreError({ reason: "StoreFailure" }))),
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new LinearSessionStoreError({ cause, key: input.key, reason: "StoreFailure" }),
+          ),
+        ),
     ),
   );
 

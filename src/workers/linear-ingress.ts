@@ -2,6 +2,7 @@ import * as BrowserCrypto from "@effect/platform-browser/BrowserCrypto";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stack } from "alchemy/Stack";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -91,7 +92,17 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
               rawBody,
               signature: headers["linear-signature"],
               webhookSecret: Redacted.value(linearWebhookSecret),
-            });
+            }).pipe(
+              Effect.tapCause((cause) =>
+                Effect.logError("linear webhook ingress failed", {
+                  bodyBytes: rawBody.byteLength,
+                  cause: Cause.pretty(cause),
+                  linearDelivery: headers["linear-delivery"],
+                  linearEvent: headers["linear-event"],
+                  rawBody: new TextDecoder().decode(rawBody),
+                }),
+              ),
+            );
           }),
         ),
     );

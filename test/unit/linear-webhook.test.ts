@@ -1,4 +1,6 @@
 import * as Effect from "effect/Effect";
+import * as Logger from "effect/Logger";
+import * as Option from "effect/Option";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LinearWebhookPayload } from "../../src/linear/webhook/payload.ts";
@@ -8,6 +10,7 @@ import {
   LinearWebhookUnauthorized,
 } from "../../src/linear/webhook/api.ts";
 import { receiveLinearWebhook } from "../../src/linear/webhook/receive.ts";
+import { decodeLinearWebhookQueueMessage } from "../../src/workers/linear-webhook-processor.ts";
 
 const secret = "linear-webhook-secret";
 
@@ -116,6 +119,26 @@ describe("receiveLinearWebhook", () => {
     expect(error.reason).toBe("InvalidSignature");
   });
 
+  it("preserves invalid payload decode cause", async () => {
+    const bytes = new TextEncoder().encode(JSON.stringify({ type: "Issue" }));
+    const rawBody = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const signature = await Effect.runPromise(sign(rawBody));
+
+    const error = await Effect.runPromise(
+      receiveLinearWebhook({
+        event: "Issue",
+        queue: { send: () => Effect.void },
+        rawBody,
+        signature,
+        webhookSecret: secret,
+      }).pipe(Effect.flip),
+    );
+
+    expect(error).toBeInstanceOf(LinearWebhookBadRequest);
+    expect(error.reason).toBe("InvalidPayload");
+    expect(String(error.cause)).toContain("createdAt");
+  });
+
   it("rejects mismatched event headers", async () => {
     const rawBody = bodyOf(issuePayload());
     const signature = await Effect.runPromise(sign(rawBody));
@@ -153,5 +176,28 @@ describe("receiveLinearWebhook", () => {
 
     expect(error).toBeInstanceOf(LinearWebhookUnauthorized);
     expect(error.reason).toBe("StaleTimestamp");
+  });
+});
+
+describe("decodeLinearWebhookQueueMessage", () => {
+  it("logs invalid queue payload with decode cause and message id", async () => {
+    const logs: Array<unknown> = [];
+    const logger = Logger.make<unknown, void>((options) => {
+      logs.push(options.message);
+    });
+
+    const result = await Effect.runPromise(
+      decodeLinearWebhookQueueMessage({
+        body: { type: "AgentSessionEvent" },
+        messageId: "msg-id",
+      }).pipe(Effect.provide(Logger.layer([logger]))),
+    );
+
+    expect(Option.isNone(result)).toBe(true);
+    const rendered = logs.map((log) => JSON.stringify(log)).join("\n");
+
+    expect(rendered).toContain("invalid linear webhook queue message");
+    expect(rendered).toContain("msg-id");
+    expect(rendered).toContain("webhookId");
   });
 });

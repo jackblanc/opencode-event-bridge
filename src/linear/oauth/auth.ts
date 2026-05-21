@@ -22,6 +22,8 @@ export class LinearOrgAuthStore extends Context.Service<
 class LinearOrgAuthStoreError extends Schema.TaggedErrorClass<LinearOrgAuthStoreError>()(
   "LinearOrgAuthStoreError",
   {
+    cause: Schema.optional(Schema.Defect),
+    key: Schema.optional(Schema.String),
     reason: Schema.Literals(["InvalidRecord", "MissingOrganizationAuth", "StoreFailure"]),
   },
 ) {}
@@ -30,9 +32,16 @@ export const makeLinearOrgAuthStore = (kv: LinearOrgAuthStoreKv) =>
   LinearOrgAuthStore.of({
     getOrgAuth: (input) =>
       Effect.gen(function* () {
-        const value = yield* kv
-          .get(input.organizationId)
-          .pipe(Effect.mapError(() => new LinearOrgAuthStoreError({ reason: "StoreFailure" })));
+        const value = yield* kv.get(input.organizationId).pipe(
+          Effect.mapError(
+            (cause) =>
+              new LinearOrgAuthStoreError({
+                cause,
+                key: input.organizationId,
+                reason: "StoreFailure",
+              }),
+          ),
+        );
 
         if (value === null) {
           return yield* new LinearOrgAuthStoreError({ reason: "MissingOrganizationAuth" });
@@ -40,6 +49,15 @@ export const makeLinearOrgAuthStore = (kv: LinearOrgAuthStoreKv) =>
 
         return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(LinearOrgAuthRecord))(
           value,
-        ).pipe(Effect.mapError(() => new LinearOrgAuthStoreError({ reason: "InvalidRecord" })));
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new LinearOrgAuthStoreError({
+                cause,
+                key: input.organizationId,
+                reason: "InvalidRecord",
+              }),
+          ),
+        );
       }),
   });

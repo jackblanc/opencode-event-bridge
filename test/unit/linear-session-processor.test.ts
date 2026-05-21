@@ -20,6 +20,7 @@ import { processLinearWebhook } from "../../src/linear/session/process.ts";
 import {
   agentSessionKey,
   issueWorktreeKey,
+  LinearSessionStoreError,
   LinearSessionStore,
   makeLinearSessionStore,
 } from "../../src/linear/session/store.ts";
@@ -47,6 +48,27 @@ const makeKv = (seed?: ReadonlyMap<string, string>) => {
     values,
   };
 };
+
+describe("LinearSessionStore", () => {
+  it("preserves invalid record cause and key", async () => {
+    const key = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const store = makeLinearSessionStore(makeKv(new Map([[key, JSON.stringify({})]])).kv);
+
+    const error = await Effect.runPromise(
+      store
+        .getAgentSession({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" })
+        .pipe(Effect.flip),
+    );
+
+    expect(error).toBeInstanceOf(LinearSessionStoreError);
+    expect(error.reason).toBe("InvalidRecord");
+    expect(error.key).toBe(key);
+    expect(String(error.cause)).toContain("linearAgentSessionId");
+  });
+});
 
 const orgAuth = {
   accessToken: "linear-access-token",

@@ -85,12 +85,16 @@ export const completeLinearOAuthInstall = <OAuthR, OrgAuthR>(input: {
         redirectUri: yield* makeCallbackUrl(input.request),
       })
       .pipe(
-        Effect.mapError(() => new LinearOAuthUpstreamError({ reason: "InvalidTokenResponse" })),
+        Effect.mapError(
+          (cause) => new LinearOAuthUpstreamError({ cause, reason: "InvalidTokenResponse" }),
+        ),
       );
     const viewer = yield* input.linear
       .fetchViewer(token.access_token)
       .pipe(
-        Effect.mapError(() => new LinearOAuthUpstreamError({ reason: "InvalidViewerResponse" })),
+        Effect.mapError(
+          (cause) => new LinearOAuthUpstreamError({ cause, reason: "InvalidViewerResponse" }),
+        ),
       );
     const now = Date.now();
     const record = {
@@ -102,11 +106,17 @@ export const completeLinearOAuthInstall = <OAuthR, OrgAuthR>(input: {
       organizationName: viewer.data.viewer.organization.name,
     };
     const encoded = yield* Schema.decodeUnknownEffect(LinearOrgAuthRecord)(record).pipe(
-      Effect.mapError(() => new LinearOAuthUpstreamError({ reason: "InvalidTokenResponse" })),
+      Effect.mapError(
+        (cause) => new LinearOAuthUpstreamError({ cause, reason: "InvalidTokenResponse" }),
+      ),
     );
     const serialized = yield* Schema.encodeEffect(Schema.fromJsonString(LinearOrgAuthRecord))(
       encoded,
-    ).pipe(Effect.mapError(() => new LinearOAuthUpstreamError({ reason: "InvalidTokenResponse" })));
+    ).pipe(
+      Effect.mapError(
+        (cause) => new LinearOAuthUpstreamError({ cause, reason: "InvalidTokenResponse" }),
+      ),
+    );
     yield* input.orgAuth.put(encoded.organizationId, serialized).pipe(Effect.orDie);
 
     return encoded;

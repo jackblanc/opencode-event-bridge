@@ -19,7 +19,7 @@ const AgentSessionWebhookPayload = Schema.StructWithRest(
         body: Schema.String,
         id: Schema.String,
         issueId: Schema.String,
-        userId: Schema.String,
+        userId: Schema.optionalKey(Schema.String),
       }),
       [ExtraFields],
     ),

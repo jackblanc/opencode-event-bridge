@@ -1,6 +1,7 @@
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stack } from "alchemy/Stack";
 import { Schema } from "effect";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
@@ -23,6 +24,20 @@ import OpenCodeRunObserver, {
 } from "../opencode/run-observer.ts";
 import { OpenCodeVpcService } from "../opencode/service.ts";
 import { makeStageWorkerName } from "./name.ts";
+
+export const decodeLinearWebhookQueueMessage = (input: {
+  readonly body: unknown;
+  readonly messageId: string;
+}) =>
+  Schema.decodeUnknownEffect(LinearWebhookPayload)(input.body).pipe(
+    Effect.tapError((cause) =>
+      Effect.logError("invalid linear webhook queue message", {
+        cause,
+        messageId: input.messageId,
+      }),
+    ),
+    Effect.option,
+  );
 
 export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebhookProcessor>()(
   "LinearWebhookProcessor",
@@ -47,6 +62,7 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
       Stream.runForEach(stream, (msg) => {
         const effect: Effect.Effect<void, unknown, Cloudflare.WorkerEnvironment> = Effect.gen(
           function* () {
+            const messageId = "unknown";
             const env = yield* Cloudflare.WorkerEnvironment;
             const store = makeLinearSessionStore({
               get: (key) =>
@@ -93,12 +109,10 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
             };
             const opencode = makeOpenCodeClient(fetchOpenCode);
             const observer = makeOpenCodeRunObserverService(observers);
-            const payloadOption = yield* Schema.decodeUnknownEffect(LinearWebhookPayload)(
-              msg.body,
-            ).pipe(
-              Effect.tapError(() => Effect.log("invalid linear webhook queue message")),
-              Effect.option,
-            );
+            const payloadOption = yield* decodeLinearWebhookQueueMessage({
+              body: msg.body,
+              messageId,
+            });
 
             if (Option.isNone(payloadOption)) {
               return;
@@ -107,6 +121,26 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
             const payload = payloadOption.value;
 
             yield* processLinearWebhook(payload).pipe(
+              Effect.tapCause((cause) =>
+                Effect.logError("linear webhook queue message failed", {
+                  action: payload.action,
+                  agentSessionId:
+                    payload.type === "AgentSessionEvent" ? payload.agentSession.id : undefined,
+                  cause: Cause.pretty(cause),
+                  issueId:
+                    payload.type === "AgentSessionEvent"
+                      ? payload.agentSession.issue.id
+                      : payload.data.id,
+                  issueIdentifier:
+                    payload.type === "AgentSessionEvent"
+                      ? payload.agentSession.issue.identifier
+                      : payload.data.identifier,
+                  messageId,
+                  organizationId: payload.organizationId,
+                  type: payload.type,
+                  webhookId: payload.webhookId,
+                }),
+              ),
               Effect.provideService(LinearHttpClient, linear),
               Effect.provideService(LinearOrgAuthStore, orgAuth),
               Effect.provideService(LinearSessionStore, store),

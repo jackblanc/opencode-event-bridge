@@ -11,7 +11,11 @@ export const verifyLinearWebhookSignature = (
   Effect.gen(function* () {
     const signatureBytes = yield* Schema.decodeUnknownEffect(Schema.Uint8ArrayFromHex)(
       headerSignatureString,
-    ).pipe(Effect.mapError(() => new LinearWebhookUnauthorized({ reason: "InvalidSignature" })));
+    ).pipe(
+      Effect.mapError(
+        (cause) => new LinearWebhookUnauthorized({ cause, reason: "InvalidSignature" }),
+      ),
+    );
     const verificationSignature = new Uint8Array(signatureBytes);
 
     const key = yield* Effect.promise(async () =>

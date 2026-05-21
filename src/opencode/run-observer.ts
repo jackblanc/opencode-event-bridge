@@ -1,5 +1,6 @@
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Schema } from "effect";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -96,7 +97,18 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
             agentSessionId: run.linearAgentSessionId,
             content: { body: detailFrom(error), type: "error" },
           })
-          .pipe(Effect.ignore);
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logError("opencode run observer error activity failed", {
+                cause,
+                issueIdentifier: run.linearIssueIdentifier,
+                linearAgentSessionId: run.linearAgentSessionId,
+                opencodeSessionId: run.opencodeSessionId,
+                opencodeWorkspaceDirectory: run.opencodeWorkspaceDirectory,
+              }),
+            ),
+            Effect.ignore,
+          );
 
       const complete = (run: OpenCodeRunRecord) =>
         opencode
@@ -122,7 +134,9 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
             Effect.tap(() =>
               Effect.log("opencode run observer completed", {
                 issueIdentifier: run.linearIssueIdentifier,
+                linearAgentSessionId: run.linearAgentSessionId,
                 opencodeSessionId: run.opencodeSessionId,
+                opencodeWorkspaceDirectory: run.opencodeWorkspaceDirectory,
               }),
             ),
             Effect.catch((error) =>
@@ -132,7 +146,9 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
                   Effect.logError("opencode run observer terminated", {
                     error: detailFrom(error),
                     issueIdentifier: run.linearIssueIdentifier,
+                    linearAgentSessionId: run.linearAgentSessionId,
                     opencodeSessionId: run.opencodeSessionId,
+                    opencodeWorkspaceDirectory: run.opencodeWorkspaceDirectory,
                   }),
                 ),
               ),
@@ -142,6 +158,9 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
       const observe = Effect.gen(function* () {
         const stored = yield* state.storage.get<OpenCodeRunRecord>(runKey);
         const run = yield* Schema.decodeUnknownEffect(OpenCodeRunRecord)(stored).pipe(
+          Effect.tapError((cause) =>
+            Effect.logError("opencode run observer invalid run record", { cause }),
+          ),
           Effect.option,
         );
 
@@ -150,7 +169,17 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
           return;
         }
 
-        yield* complete(run.value);
+        yield* complete(run.value).pipe(
+          Effect.tapCause((cause) =>
+            Effect.logError("opencode run observer alarm failed", {
+              cause: Cause.pretty(cause),
+              issueIdentifier: run.value.linearIssueIdentifier,
+              linearAgentSessionId: run.value.linearAgentSessionId,
+              opencodeSessionId: run.value.opencodeSessionId,
+              opencodeWorkspaceDirectory: run.value.opencodeWorkspaceDirectory,
+            }),
+          ),
+        );
       });
 
       return {
@@ -161,7 +190,9 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
             yield* schedule();
             yield* Effect.log("opencode run observer started", {
               issueIdentifier: run.linearIssueIdentifier,
+              linearAgentSessionId: run.linearAgentSessionId,
               opencodeSessionId: run.opencodeSessionId,
+              opencodeWorkspaceDirectory: run.opencodeWorkspaceDirectory,
             });
           }),
       };

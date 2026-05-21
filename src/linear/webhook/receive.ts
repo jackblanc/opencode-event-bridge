@@ -12,7 +12,7 @@ const decodeAndValidateLinearWebhookPayload = (rawBody: ArrayBuffer, linearEvent
     const linearWebhookPayload = yield* Schema.decodeUnknownEffect(
       Schema.fromJsonString(LinearWebhookPayload),
     )(new TextDecoder().decode(rawBody)).pipe(
-      Effect.mapError(() => new LinearWebhookBadRequest({ reason: "InvalidPayload" })),
+      Effect.mapError((cause) => new LinearWebhookBadRequest({ cause, reason: "InvalidPayload" })),
     );
 
     if (linearWebhookPayload.type !== linearEventHeader) {
@@ -40,6 +40,14 @@ export const receiveLinearWebhook = <R>(input: {
     }
 
     const payload = yield* decodeAndValidateLinearWebhookPayload(input.rawBody, input.event);
+    yield* Effect.log("linear webhook payload decoded", {
+      action: payload.action,
+      bodyBytes: input.rawBody.byteLength,
+      organizationId: payload.organizationId,
+      rawBody: new TextDecoder().decode(input.rawBody),
+      type: payload.type,
+      webhookId: payload.webhookId,
+    });
     yield* input.queue.send(payload).pipe(Effect.orDie);
 
     return { queued: true };
