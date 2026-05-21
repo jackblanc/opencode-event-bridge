@@ -1,6 +1,7 @@
 import * as BrowserCrypto from "@effect/platform-browser/BrowserCrypto";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import { Stack } from "alchemy/Stack";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -20,6 +21,7 @@ import { LinearOAuthStateStore, LinearOrgAuthStore } from "../linear/oauth/store
 import { LinearWebhookApi } from "../linear/webhook/api.ts";
 import { LinearWebhookQueue } from "../linear/webhook/queue.ts";
 import { receiveLinearWebhook } from "../linear/webhook/receive.ts";
+import { makeStageWorkerName } from "./name.ts";
 
 // Workers do not have filesystem-backed file responses, and this API never serves files.
 const HttpPlatformStub = Layer.succeed(HttpPlatform.HttpPlatform, {
@@ -29,7 +31,10 @@ const HttpPlatformStub = Layer.succeed(HttpPlatform.HttpPlatform, {
 
 export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebhookReceiver>()(
   "LinearWebhookReceiver",
-  { main: import.meta.filename, name: "opencode-event-bridge-linear-webhook" },
+  Stack.useSync((stack) => ({
+    main: import.meta.filename,
+    name: makeStageWorkerName(stack.stage, "linear-webhook"),
+  })),
   Effect.gen(function* () {
     const queueResource = yield* LinearWebhookQueue;
     const queue = yield* Cloudflare.QueueBinding.bind(queueResource);

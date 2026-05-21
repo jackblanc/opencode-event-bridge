@@ -1,4 +1,5 @@
 import * as Cloudflare from "alchemy/Cloudflare";
+import { Stack } from "alchemy/Stack";
 import { Schema } from "effect";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -21,10 +22,14 @@ import OpenCodeRunObserver, {
   OpenCodeRunObserverService,
 } from "../opencode/run-observer.ts";
 import { OpenCodeVpcService } from "../opencode/service.ts";
+import { makeStageWorkerName } from "./name.ts";
 
 export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebhookProcessor>()(
   "LinearWebhookProcessor",
-  { main: import.meta.filename, name: "opencode-event-bridge-linear-processor" },
+  Stack.useSync((stack) => ({
+    main: import.meta.filename,
+    name: makeStageWorkerName(stack.stage, "event-processor"),
+  })),
   Effect.gen(function* () {
     const queueResource = yield* LinearWebhookQueue;
     const sessionStoreResource = yield* LinearSessionStoreKv;
