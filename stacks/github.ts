@@ -46,13 +46,16 @@ export default Alchemy.Stack(
       ],
     });
 
-    const secrets = {
+    const repositorySecrets = {
       CLOUDFLARE_API_TOKEN: token.value,
       CLOUDFLARE_ACCOUNT_ID: Redacted.make(accountId),
+      LINEAR_OAUTH_CLIENT_ID: Redacted.make(yield* env("LINEAR_OAUTH_CLIENT_ID")),
+      LINEAR_OAUTH_CLIENT_SECRET: Redacted.make(yield* env("LINEAR_OAUTH_CLIENT_SECRET")),
+      LINEAR_WEBHOOK_SECRET: Redacted.make(yield* env("LINEAR_WEBHOOK_SECRET")),
     };
 
     yield* Effect.all(
-      Object.entries(secrets).map(([name, value]) =>
+      Object.entries(repositorySecrets).map(([name, value]) =>
         GitHub.Secret(name, {
           owner,
           repository,
