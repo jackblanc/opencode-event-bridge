@@ -1,0 +1,307 @@
+diff --git a/lib/services/workers.d.ts b/lib/services/workers.d.ts
+index 199a9a841af17f2471668cb4ec854e96db33d729..77158f02dc89782e8afb40a15357c1eeaf2be210 100644
+--- a/lib/services/workers.d.ts
++++ b/lib/services/workers.d.ts
+@@ -480,6 +480,10 @@ export interface GetBetaWorkerVersionResponse {
+         service: string;
+         type: "service";
+         environment?: string | null;
++    } | {
++        name: string;
++        serviceId: string;
++        type: "vpc_service";
+     } | {
+         name: string;
+         part: string;
+@@ -1108,6 +1112,10 @@ export interface CreateBetaWorkerVersionResponse {
+         service: string;
+         type: "service";
+         environment?: string | null;
++    } | {
++        name: string;
++        serviceId: string;
++        type: "vpc_service";
+     } | {
+         name: string;
+         part: string;
+@@ -2026,6 +2034,10 @@ export interface PutScriptRequest {
+             service: string;
+             type: "service";
+             environment?: string;
++        } | {
++            name: string;
++            serviceId: string;
++            type: "vpc_service";
+         } | {
+             name: string;
+             part: string;
+@@ -2161,7 +2173,7 @@ export interface PutScriptRequest {
+ }
+ export declare const PutScriptRequest: Schema.Schema<PutScriptRequest>;
+ export interface PutScriptResponse {
+-    startupTimeMs: number;
++    startupTimeMs?: number | null;
+     /** The name used to identify the script. */
+     id?: string | null;
+     /** Date indicating targeted support in the Workers runtime. Backwards incompatible fixes to the runtime following this date will not affect this Worker. */
+@@ -2212,7 +2224,7 @@ export interface PutScriptResponse {
+         } | null;
+     } | null;
+     /** Configuration for [Smart Placement](https://developers.cloudflare.com/workers/configuration/smart-placement). Specify either mode for Smart Placement, or one of region/hostname/host for targeted place */
+-    placement?: {
++    placement?: {} | {
+         mode: "smart";
+         lastAnalyzedAt?: string | null;
+         status?: "SUCCESS" | "UNSUPPORTED_APPLICATION" | "INSUFFICIENT_INVOCATIONS" | null;
+diff --git a/lib/services/workers.js b/lib/services/workers.js
+index 786af65b091b706c97fe4a2f01fbb52ee300ba0c..1ff057601f382fcea9a7549f1a6bb6958622932a 100644
+--- a/lib/services/workers.js
++++ b/lib/services/workers.js
+@@ -605,6 +605,15 @@ export const GetBetaWorkerVersionResponse =
+                 type: Schema.Literal("service"),
+                 environment: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+             }),
++            Schema.Struct({
++                name: Schema.String,
++                serviceId: Schema.String,
++                type: Schema.Literal("vpc_service"),
++            }).pipe(Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++            })),
+             Schema.Struct({
+                 name: Schema.String,
+                 part: Schema.String,
+@@ -1448,6 +1457,15 @@ export const CreateBetaWorkerVersionRequest =
+             type: Schema.Literal("service"),
+             environment: Schema.optional(Schema.String),
+         }),
++        Schema.Struct({
++            name: Schema.String,
++            serviceId: Schema.String,
++            type: Schema.Literal("vpc_service"),
++        }).pipe(Schema.encodeKeys({
++            name: "name",
++            serviceId: "service_id",
++            type: "type",
++        })),
+         Schema.Struct({
+             name: Schema.String,
+             part: Schema.String,
+@@ -1797,6 +1815,15 @@ export const CreateBetaWorkerVersionResponse =
+                 type: Schema.Literal("service"),
+                 environment: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+             }),
++            Schema.Struct({
++                name: Schema.String,
++                serviceId: Schema.String,
++                type: Schema.Literal("vpc_service"),
++            }).pipe(Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++            })),
+             Schema.Struct({
+                 name: Schema.String,
+                 part: Schema.String,
+@@ -3453,6 +3480,15 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+                 type: Schema.Literal("service"),
+                 environment: Schema.optional(Schema.String),
+             }),
++            Schema.Struct({
++                name: Schema.String,
++                serviceId: Schema.String,
++                type: Schema.Literal("vpc_service"),
++            }).pipe(Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++            })),
+             Schema.Struct({
+                 name: Schema.String,
+                 part: Schema.String,
+@@ -3686,8 +3722,8 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+     path: "/accounts/{account_id}/workers/scripts/{scriptName}",
+     contentType: "multipart",
+ }));
+-export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+-    startupTimeMs: Schema.Number,
++const PutScriptResponseShape = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
++    startupTimeMs: Schema.optional(Schema.Union([Schema.Number, Schema.Null])),
+     id: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+     compatibilityDate: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+     compatibilityFlags: Schema.optional(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+@@ -3752,6 +3788,7 @@ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+     ])),
+     placement: Schema.optional(Schema.Union([
+         Schema.Union([
++            Schema.Struct({}),
+             Schema.Struct({
+                 mode: Schema.Literal("smart"),
+                 lastAnalyzedAt: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+@@ -3869,6 +3906,7 @@ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+     usageModel: "usage_model",
+ }))
+     .pipe(T.ResponsePath("result"));
++export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Unknown.pipe(T.ResponsePath("result"));
+ export const putScript = /*@__PURE__*/ /*#__PURE__*/ API.make(() => ({
+     input: PutScriptRequest,
+     output: PutScriptResponse,
+@@ -5050,6 +5088,15 @@ export const GetScriptScriptAndVersionSettingResponse =
+                 type: Schema.Literal("service"),
+                 environment: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+             }),
++            Schema.Struct({
++                name: Schema.String,
++                serviceId: Schema.String,
++                type: Schema.Literal("vpc_service"),
++            }).pipe(Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++            })),
+             Schema.Struct({
+                 name: Schema.String,
+                 part: Schema.String,
+diff --git a/src/services/workers.ts b/src/services/workers.ts
+index d7f2cf3bb8743d8388902710de8843b32403cd82..662ac4c81b0df4c8dc76aa77720da795f931423a 100644
+--- a/src/services/workers.ts
++++ b/src/services/workers.ts
+@@ -1325,6 +1325,17 @@ export const GetBetaWorkerVersionResponse =
+                 Schema.Union([Schema.String, Schema.Null]),
+               ),
+             }),
++            Schema.Struct({
++              name: Schema.String,
++              serviceId: Schema.String,
++              type: Schema.Literal("vpc_service"),
++            }).pipe(
++              Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++              }),
++            ),
+             Schema.Struct({
+               name: Schema.String,
+               part: Schema.String,
+@@ -2813,6 +2824,17 @@ export const CreateBetaWorkerVersionRequest =
+             type: Schema.Literal("service"),
+             environment: Schema.optional(Schema.String),
+           }),
++          Schema.Struct({
++            name: Schema.String,
++            serviceId: Schema.String,
++            type: Schema.Literal("vpc_service"),
++          }).pipe(
++            Schema.encodeKeys({
++              name: "name",
++              serviceId: "service_id",
++              type: "type",
++            }),
++          ),
+           Schema.Struct({
+             name: Schema.String,
+             part: Schema.String,
+@@ -3446,6 +3468,17 @@ export const CreateBetaWorkerVersionResponse =
+                 Schema.Union([Schema.String, Schema.Null]),
+               ),
+             }),
++            Schema.Struct({
++              name: Schema.String,
++              serviceId: Schema.String,
++              type: Schema.Literal("vpc_service"),
++            }).pipe(
++              Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++              }),
++            ),
+             Schema.Struct({
+               name: Schema.String,
+               part: Schema.String,
+@@ -6947,6 +6980,17 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+             type: Schema.Literal("service"),
+             environment: Schema.optional(Schema.String),
+           }),
++          Schema.Struct({
++            name: Schema.String,
++            serviceId: Schema.String,
++            type: Schema.Literal("vpc_service"),
++          }).pipe(
++            Schema.encodeKeys({
++              name: "name",
++              serviceId: "service_id",
++              type: "type",
++            }),
++          ),
+           Schema.Struct({
+             name: Schema.String,
+             part: Schema.String,
+@@ -7262,7 +7306,7 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+ ) as unknown as Schema.Schema<PutScriptRequest>;
+ 
+ export interface PutScriptResponse {
+-  startupTimeMs: number;
++  startupTimeMs?: number | null;
+   /** The name used to identify the script. */
+   id?: string | null;
+   /** Date indicating targeted support in the Workers runtime. Backwards incompatible fixes to the runtime following this date will not affect this Worker. */
+@@ -7311,6 +7355,7 @@ export interface PutScriptResponse {
+   } | null;
+   /** Configuration for [Smart Placement](https://developers.cloudflare.com/workers/configuration/smart-placement). Specify either mode for Smart Placement, or one of region/hostname/host for targeted place */
+   placement?:
++    | {}
+     | {
+         mode: "smart";
+         lastAnalyzedAt?: string | null;
+@@ -7372,8 +7417,8 @@ export interface PutScriptResponse {
+   usageModel?: "standard" | "bundled" | "unbound" | null;
+ }
+ 
+-export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+-  startupTimeMs: Schema.Number,
++const PutScriptResponseShape = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
++  startupTimeMs: Schema.optional(Schema.Union([Schema.Number, Schema.Null])),
+   id: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
+   compatibilityDate: Schema.optional(
+     Schema.Union([Schema.String, Schema.Null]),
+@@ -7477,6 +7522,7 @@ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+   placement: Schema.optional(
+     Schema.Union([
+       Schema.Union([
++        Schema.Struct({}),
+         Schema.Struct({
+           mode: Schema.Literal("smart"),
+           lastAnalyzedAt: Schema.optional(
+@@ -7640,6 +7686,10 @@ export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+     T.ResponsePath("result"),
+   ) as unknown as Schema.Schema<PutScriptResponse>;
+ 
++export const PutScriptResponse = /*@__PURE__*/ /*#__PURE__*/ Schema.Unknown.pipe(
++  T.ResponsePath("result"),
++) as unknown as Schema.Schema<PutScriptResponse>;
++
+ export type PutScriptError =
+   | DefaultErrors
+   | InvalidRoute
+@@ -10023,6 +10073,17 @@ export const GetScriptScriptAndVersionSettingResponse =
+                 Schema.Union([Schema.String, Schema.Null]),
+               ),
+             }),
++            Schema.Struct({
++              name: Schema.String,
++              serviceId: Schema.String,
++              type: Schema.Literal("vpc_service"),
++            }).pipe(
++              Schema.encodeKeys({
++                name: "name",
++                serviceId: "service_id",
++                type: "type",
++              }),
++            ),
+             Schema.Struct({
+               name: Schema.String,
+               part: Schema.String,
