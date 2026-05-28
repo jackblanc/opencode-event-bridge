@@ -17,20 +17,20 @@
     "check": "pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run knip && pnpm run test:unit"
   },
   "dependencies": {
-    "@effect/platform-browser": "4.0.0-beta.70",
-    "@effect/platform-node": "4.0.0-beta.70",
-    "@opencode-ai/sdk": "^1.15.5",
-    "alchemy": "2.0.0-beta.42",
-    "effect": "4.0.0-beta.70"
+    "@effect/platform-browser": "4.0.0-beta.74",
+    "@effect/platform-node": "4.0.0-beta.74",
+    "@opencode-ai/sdk": "^1.15.11",
+    "alchemy": "2.0.0-beta.44",
+    "effect": "4.0.0-beta.74"
   },
   "devDependencies": {
     "@effect/language-service": "^0.86.2",
-    "@effect/vitest": "4.0.0-beta.70",
+    "@effect/vitest": "4.0.0-beta.74",
     "@types/node": "^25.9.1",
-    "knip": "^6.14.1",
+    "knip": "^6.14.2",
     "lefthook": "^2.1.8",
-    "oxfmt": "^0.51.0",
-    "oxlint": "^1.66.0",
+    "oxfmt": "^0.52.0",
+    "oxlint": "^1.67.0",
     "oxlint-tsgolint": "^0.23.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
@@ -38,8 +38,7 @@
   "packageManager": "pnpm@10.23.0",
   "pnpm": {
     "patchedDependencies": {
-      "@distilled.cloud/cloudflare@0.21.4": "patches/@distilled.cloud__cloudflare@0.21.4.patch",
-      "alchemy@2.0.0-beta.42": "patches/alchemy@2.0.0-beta.42.patch"
+      "alchemy@2.0.0-beta.44": "patches/alchemy@2.0.0-beta.44.patch"
     }
   }
 }
