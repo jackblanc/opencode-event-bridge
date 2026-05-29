@@ -8,6 +8,15 @@ This project is an evolution of ~/projects/opencode-linear-agent, but written in
 
 This project has no users. Do not worry about breaking changes or backwards compatibility, ever. Produce clean, optimal, and maintainable code.
 
+## Current Target
+
+The authoritative implementation plan is `plans/v2-linear-opencode-agent-parity.md`.
+
+- Complete that plan exactly before calling the work done.
+- Do not preserve stale behavior from older plans or from `~/projects/opencode-linear-agent`.
+- Allowed bridge-owned KV records: Linear org auth, Session Locator, Pending OpenCode Input.
+- Do not add issue-level run/workspace state unless the plan is updated first.
+
 ## Commands
 
 - Use pnpm only: `pnpm install`, `pnpm run ...`.
@@ -48,6 +57,20 @@ To understand the Agent API, read the web documentation:
 ## Triage
 
 - For deployed Worker failures, use Cloudflare Observability/query APIs for logs and reproduce against the deployed URL. Do not infer production failures from local code alone.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in Linear team `CODE`; repo work must carry project label `repo:opencode-event-bridge`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage uses Linear statuses for lifecycle and labels for routing. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo: root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
 
 ## Code Conventions
 
