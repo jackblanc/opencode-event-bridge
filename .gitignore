@@ -23,6 +23,7 @@ report.*.*.*.*.json
 .eslintcache
 .cache
 .alchemy
+.opencode
 .pnpm-store
 *.tsbuildinfo
 

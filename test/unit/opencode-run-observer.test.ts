@@ -17,7 +17,7 @@ const run = {
   linearAgentSessionId: "linear-session-id",
   opencodeSessionId: "opencode-session-id",
   organizationId: "org-id",
-  projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge",
+  projectDirectory: "/workspace/opencode-event-bridge",
   workspaceDirectory: "/tmp/opencode/oeb-1",
 };
 

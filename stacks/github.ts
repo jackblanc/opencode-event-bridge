@@ -22,7 +22,7 @@ export default Alchemy.Stack(
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
-    const owner = process.env["GITHUB_OWNER"] ?? "jackblanc";
+    const owner = yield* env("GITHUB_OWNER");
     const repository = process.env["GITHUB_REPOSITORY_NAME"] ?? "opencode-event-bridge";
     const accountId = yield* env("CLOUDFLARE_ACCOUNT_ID");
 

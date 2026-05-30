@@ -45,7 +45,7 @@ const orgAuth = {
 const locator = {
   linearAgentSessionId: "linear-session-id",
   opencodeSessionId: "opencode-session-id",
-  projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge",
+  projectDirectory: "/workspace/opencode-event-bridge",
   workspaceDirectory: "/tmp/opencode/oeb-1",
 };
 
@@ -184,7 +184,7 @@ const makeOpencode = (input?: {
       Effect.succeed(
         input?.projects ?? [
           {
-            directory: "/Users/jackblanc/projects/opencode-event-bridge",
+            directory: "/workspace/opencode-event-bridge",
             id: "project-id",
             name: "opencode-event-bridge",
           },
@@ -454,7 +454,7 @@ describe("processLinearWebhook", () => {
             opencode: makeOpencode({
               projects: [
                 {
-                  directory: "/Users/jackblanc/projects/opencode-event-bridge",
+                  directory: "/workspace/opencode-event-bridge",
                   id: "project-id",
                   name: "opencode-event-bridge",
                 },
@@ -658,7 +658,7 @@ describe("processLinearWebhook", () => {
         linearAgentSessionId: "linear-session-id",
         opencodeSessionId: "opencode-session-id",
         organizationId: "org-id",
-        projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge",
+        projectDirectory: "/workspace/opencode-event-bridge",
         workspaceDirectory: "/tmp/opencode/oeb-1",
       },
     ]);
@@ -797,7 +797,7 @@ describe("processLinearWebhook", () => {
         linearAgentSessionId: "linear-session-id",
         opencodeSessionId: "opencode-session-id",
         organizationId: "org-id",
-        projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge",
+        projectDirectory: "/workspace/opencode-event-bridge",
         workspaceDirectory: "/tmp/opencode/oeb-1",
       },
     ]);

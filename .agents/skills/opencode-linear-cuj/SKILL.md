@@ -54,9 +54,9 @@ Validate the production-shaped flow without building a fragile full E2E suite:
 
 ## OpenCode References
 
-- OpenCode `prompt_async` handler: `~/oss/opencode/packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts`
-- OpenCode session status semantics: `~/oss/opencode/packages/opencode/src/session/status.ts`
-- OpenCode CLI wait strategy: `~/oss/opencode/packages/opencode/src/cli/cmd/run/stream.transport.ts`
+- OpenCode `prompt_async` handler
+- OpenCode session status semantics
+- OpenCode CLI wait strategy
 
 ## Bridge References
 

@@ -240,7 +240,7 @@ Persisted indexes:
   - `pnpm run check`
 - Local/deployed E2E:
   - confirm `opencode serve --hostname 127.0.0.1 --port 4096` is reachable at `/project`
-  - confirm Cloudflare tunnel/VPC path is running per `LOCAL_STATE.md`
+  - confirm Cloudflare tunnel/VPC path is running
   - deploy stack with `pnpm exec alchemy deploy`
   - install or verify Linear OAuth app auth for the workspace
   - ensure Linear webhook URL points to deployed `/api/webhook/linear`

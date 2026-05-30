@@ -4,16 +4,11 @@ This project is an event bridge for OpenCode, an open-source coding agent. It re
 
 The only event source right now is Linear. In the future, we could add support for other event sources.
 
-This project is an evolution of ~/projects/opencode-linear-agent, but written in Effect TypeScript instead of raw TS.
-
-This project has no users. Do not worry about breaking changes or backwards compatibility, ever. Produce clean, optimal, and maintainable code.
-
 ## Current Target
 
 The authoritative implementation plan is `plans/v2-linear-opencode-agent-parity.md`.
 
 - Complete that plan exactly before calling the work done.
-- Do not preserve stale behavior from older plans or from `~/projects/opencode-linear-agent`.
 - Allowed bridge-owned KV records: Linear org auth, Session Locator, Pending OpenCode Input.
 - Do not add issue-level run/workspace state unless the plan is updated first.
 
@@ -25,18 +20,11 @@ The authoritative implementation plan is `plans/v2-linear-opencode-agent-parity.
 
 ## Dependency References
 
-Reference the source code of our open source dependencies to understand them. If a user says "read OpenCode" or "check the source code", reference these local repository checkouts.
-
-- Effect v4: `~/oss/effect-smol` (https://github.com/effect-ts/effect-smol)
-- Alchemy: `~/oss/alchemy-effect` (https://github.com/alchemy-run/alchemy-effect)
-  - distilled (SDKs used by Alchemy): `~/oss/distilled` (https://github.com/alchemy-run/distilled)
-- OpenCode: `~/oss/opencode` (https://github.com/anomalyco/opencode)
+Reference dependency source or official documentation when behavior depends on OpenCode, Effect, Alchemy, Cloudflare, or Linear APIs.
 
 ## Linear Documentation References
 
 Linear provides a robust Agent API for connecting Linear to coding agents.
-
-We do not use Linear's TypeScript SDK directly because it's not very good. But, the SDK is a useful reference. It is cloned to `~/oss/linear`.
 
 To understand the Agent API, read the web documentation:
 
@@ -62,7 +50,7 @@ To understand the Agent API, read the web documentation:
 
 ### Issue tracker
 
-Issues are tracked in Linear team `CODE`; repo work must carry project label `repo:opencode-event-bridge`. See `docs/agents/issue-tracker.md`.
+Issue tracker notes live in `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

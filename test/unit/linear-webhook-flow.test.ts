@@ -181,7 +181,7 @@ const responseFor = (request: OpenCodeRequest, messageRequests: number, statusRe
     return Response.json([
       {
         id: "project-id",
-        worktree: "/Users/jackblanc/projects/opencode-event-bridge",
+        worktree: "/workspace/opencode-event-bridge",
         time: { created: 1 },
       },
     ]);
@@ -189,7 +189,7 @@ const responseFor = (request: OpenCodeRequest, messageRequests: number, statusRe
 
   if (
     request.url ===
-    "http://127.0.0.1:4096/experimental/worktree?directory=%2FUsers%2Fjackblanc%2Fprojects%2Fopencode-event-bridge"
+    "http://127.0.0.1:4096/experimental/worktree?directory=%2Fworkspace%2Fopencode-event-bridge"
   ) {
     if (request.method === "GET") {
       return Response.json([]);
@@ -356,12 +356,12 @@ describe("Linear webhook to OpenCode", () => {
         {
           body: null,
           method: "GET",
-          url: "http://127.0.0.1:4096/experimental/worktree?directory=%2FUsers%2Fjackblanc%2Fprojects%2Fopencode-event-bridge",
+          url: "http://127.0.0.1:4096/experimental/worktree?directory=%2Fworkspace%2Fopencode-event-bridge",
         },
         {
           body: { name: "oeb-1" },
           method: "POST",
-          url: "http://127.0.0.1:4096/experimental/worktree?directory=%2FUsers%2Fjackblanc%2Fprojects%2Fopencode-event-bridge",
+          url: "http://127.0.0.1:4096/experimental/worktree?directory=%2Fworkspace%2Fopencode-event-bridge",
         },
         {
           body: null,
@@ -395,7 +395,7 @@ describe("Linear webhook to OpenCode", () => {
           linearAgentSessionId: "linear-session-id",
           opencodeSessionId: "opencode-session-id",
           organizationId: "org-id",
-          projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge",
+          projectDirectory: "/workspace/opencode-event-bridge",
           workspaceDirectory: "/tmp/opencode/oeb-1",
         },
       ]);
