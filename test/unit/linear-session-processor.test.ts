@@ -1,34 +1,67 @@
+import type { PermissionRequest, QuestionRequest } from "@opencode-ai/sdk/v2/client";
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { describe, expect, it } from "vitest";
 
 import type {
   LinearAgentActivityContent,
+  LinearAgentActivityInput,
   LinearHttpClientService,
 } from "../../src/linear/client/client.ts";
 import type {
   LinearAgentSessionKey,
-  LinearIssueWorktreeKey,
+  LinearPendingInputKey,
 } from "../../src/linear/session/store.ts";
-import type { LinearWebhookPayload } from "../../src/linear/webhook/payload.ts";
+import type {
+  CreatedAgentSessionEventWebhookPayload,
+  LinearWebhookPayload,
+} from "../../src/linear/webhook/payload.ts";
 import type { OpenCodeClientService } from "../../src/opencode/client.ts";
 import type { OpenCodeRunRecord } from "../../src/opencode/run-observer.ts";
 
-import { LinearHttpClient } from "../../src/linear/client/client.ts";
+import { LinearHttpClient, LinearHttpClientError } from "../../src/linear/client/client.ts";
 import { LinearOrgAuthStore } from "../../src/linear/oauth/auth.ts";
 import { processLinearWebhook } from "../../src/linear/session/process.ts";
 import {
   agentSessionKey,
-  issueWorktreeKey,
-  LinearSessionStoreError,
   LinearSessionStore,
+  LinearSessionStoreError,
   makeLinearSessionStore,
+  pendingInputKey,
 } from "../../src/linear/session/store.ts";
-import { OpenCodeClient } from "../../src/opencode/client.ts";
+import { OpenCodeClient, OpenCodeClientError } from "../../src/opencode/client.ts";
 import { OpenCodeRunObserverService } from "../../src/opencode/run-observer.ts";
 
-const makeObserver = (runs: Array<OpenCodeRunRecord>) =>
+const orgAuth = {
+  accessToken: "linear-access-token",
+  accessTokenExpiresAt: Date.now() + 1_000,
+  appUserId: "app-user-id",
+  organizationId: "org-id",
+  organizationName: "Example",
+  refreshToken: "refresh-token",
+};
+
+const locator = {
+  linearAgentSessionId: "linear-session-id",
+  opencodeSessionId: "opencode-session-id",
+  projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge",
+  workspaceDirectory: "/tmp/opencode/oeb-1",
+};
+
+type ActivityRecord = {
+  readonly agentSessionId: string;
+  readonly content: LinearAgentActivityContent;
+  readonly signal?: LinearAgentActivityInput["signal"];
+  readonly signalMetadata?: LinearAgentActivityInput["signalMetadata"];
+};
+
+const makeObserver = (runs: Array<OpenCodeRunRecord>, cancels: Array<string>) =>
   OpenCodeRunObserverService.of({
+    cancel: (input) =>
+      Effect.sync(() => {
+        cancels.push(input.linearAgentSessionId);
+      }).pipe(Effect.asVoid),
     start: (run) =>
       Effect.sync(() => {
         runs.push(run);
@@ -40,100 +73,159 @@ const makeKv = (seed?: ReadonlyMap<string, string>) => {
 
   return {
     kv: {
-      get: (key: LinearIssueWorktreeKey | LinearAgentSessionKey) =>
+      delete: (key: LinearAgentSessionKey | LinearPendingInputKey) =>
+        Effect.sync(() => values.delete(key)).pipe(Effect.asVoid),
+      get: (key: LinearAgentSessionKey | LinearPendingInputKey) =>
         Effect.sync(() => values.get(key) ?? null),
-      put: (key: LinearIssueWorktreeKey | LinearAgentSessionKey, value: string) =>
+      put: (key: LinearAgentSessionKey | LinearPendingInputKey, value: string) =>
         Effect.sync(() => values.set(key, value)).pipe(Effect.asVoid),
     },
     values,
   };
 };
 
-describe("LinearSessionStore", () => {
-  it("preserves invalid record cause and key", async () => {
-    const key = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const store = makeLinearSessionStore(makeKv(new Map([[key, JSON.stringify({})]])).kv);
-
-    const error = await Effect.runPromise(
-      store
-        .getAgentSession({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" })
-        .pipe(Effect.flip),
-    );
-
-    expect(error).toBeInstanceOf(LinearSessionStoreError);
-    expect(error.reason).toBe("InvalidRecord");
-    expect(error.key).toBe(key);
-    expect(String(error.cause)).toContain("linearAgentSessionId");
-  });
-});
-
-const orgAuth = {
-  accessToken: "linear-access-token",
-  accessTokenExpiresAt: Date.now() + 1_000,
-  appUserId: "app-user-id",
-  organizationId: "org-id",
-  organizationName: "Example",
-  refreshToken: "refresh-token",
-};
-
-const makeOrgAuthStore = () => ({
-  getOrgAuth: () => Effect.succeed(orgAuth),
-});
-
-const makeLinear = (
-  activities: Array<{
-    readonly agentSessionId: string;
-    readonly content: LinearAgentActivityContent;
-  }>,
-  links: Array<{
-    readonly agentSessionId: string;
-    readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
-  }>,
-  labels: ReadonlyArray<{
+const makeLinear = (input: {
+  readonly activities: Array<ActivityRecord>;
+  readonly labelWriteError?: LinearHttpClientError;
+  readonly labelWriteFailure?: boolean;
+  readonly labelWrites?: Array<string>;
+  readonly labels?: ReadonlyArray<{
+    readonly id: string;
     readonly name: string;
     readonly parent: { readonly name: string } | null;
-  }> = [{ name: "repo:opencode-event-bridge", parent: null }],
-): LinearHttpClientService => ({
-  createAgentActivity: (input: {
-    readonly accessToken: string;
-    readonly agentSessionId: string;
-    readonly content: LinearAgentActivityContent;
-  }) =>
-    Effect.sync(() => {
-      expect(input.accessToken).toBe("linear-access-token");
-      activities.push({ agentSessionId: input.agentSessionId, content: input.content });
-    }).pipe(Effect.asVoid),
-  exchangeOAuthCode: () => Effect.die("exchangeOAuthCode is not used by session processor tests"),
-  fetchViewer: () => Effect.die("fetchViewer is not used by session processor tests"),
-  getIssueLabels: (input) =>
-    Effect.sync(() => {
-      expect(input.accessToken).toBe("linear-access-token");
-      expect(input.issueId).toBe("issue-id");
-      return labels;
-    }),
-  updateAgentSessionExternalUrls: (input) =>
-    Effect.sync(() => {
-      expect(input.accessToken).toBe("linear-access-token");
-      links.push({ agentSessionId: input.agentSessionId, externalUrls: input.externalUrls });
-    }).pipe(Effect.asVoid),
-});
+  }>;
+  readonly issueSessionIds?: ReadonlyArray<string>;
+}) => {
+  const labels = input.labels ?? [
+    { id: "label-id", name: "repo:opencode-event-bridge", parent: null },
+  ];
+  const issueSessionIds = input.issueSessionIds ?? ["linear-session-id"];
 
-const createdPayload = (
-  labels: ReadonlyArray<{ readonly name: string }> = [{ name: "repo:opencode-event-bridge" }],
-): LinearWebhookPayload => ({
+  return {
+    addIssueLabel: (label) => {
+      if (input.labelWriteError !== undefined) {
+        return Effect.fail(input.labelWriteError);
+      }
+
+      if (input.labelWriteFailure === true) {
+        return Effect.fail(
+          new LinearHttpClientError({ cause: "forbidden", reason: "PermissionFailure" }),
+        );
+      }
+
+      return Effect.sync(() => {
+        input.labelWrites?.push(label.labelName);
+      }).pipe(Effect.asVoid);
+    },
+    createAgentActivity: (activity) =>
+      Effect.sync(() => {
+        input.activities.push({
+          agentSessionId: activity.agentSessionId,
+          content: activity.content,
+          signal: activity.signal,
+          signalMetadata: activity.signalMetadata,
+        });
+      }).pipe(Effect.as({ id: `activity-${input.activities.length}` })),
+    exchangeOAuthCode: () => Effect.die("unused"),
+    fetchViewer: () => Effect.die("unused"),
+    getIssueAgentSessionIds: () => Effect.succeed(issueSessionIds),
+    getIssueLabels: () => Effect.succeed(labels),
+    refreshOAuthToken: () => Effect.die("unused"),
+    updateAgentSessionExternalUrls: () => Effect.void,
+    updateAgentSessionPlan: () => Effect.void,
+  } satisfies LinearHttpClientService;
+};
+
+const makeOpencode = (input?: {
+  readonly prompts?: Array<{ readonly body: string; readonly sessionId: string }>;
+  readonly aborts?: Array<string>;
+  readonly permissions?: ReadonlyArray<PermissionRequest>;
+  readonly projects?: ReadonlyArray<{
+    readonly directory: string;
+    readonly id: string;
+    readonly name: string;
+  }>;
+  readonly questionReplies?: Array<{
+    readonly answers: ReadonlyArray<ReadonlyArray<string>>;
+    readonly requestId: string;
+  }>;
+  readonly questions?: ReadonlyArray<QuestionRequest>;
+  readonly removals?: Array<string>;
+  readonly removeWorktreeFailure?: boolean;
+  readonly permissionReplies?: Array<string>;
+  readonly permissionReplyRequests?: Array<{
+    readonly reply: "once" | "always" | "reject";
+    readonly requestId: string;
+  }>;
+  readonly sessionIds?: ReadonlyArray<string>;
+  readonly worktrees?: ReadonlyArray<{ readonly workspaceDirectory: string }>;
+}) =>
+  ({
+    abortSession: (session) =>
+      Effect.sync(() => {
+        input?.aborts?.push(session.sessionId);
+      }).pipe(Effect.asVoid),
+    completedResponse: () => Effect.succeed({ body: "done" }),
+    createSession: () => Effect.succeed({ id: "opencode-session-id" }),
+    createWorktree: () => Effect.succeed({ workspaceDirectory: "/tmp/opencode/oeb-1" }),
+    listPendingPermissions: (request) =>
+      Effect.succeed(
+        (input?.permissions ?? []).filter((permission) =>
+          (request.sessionIds ?? [request.sessionId]).includes(permission.sessionID),
+        ),
+      ),
+    listPendingQuestions: (request) =>
+      Effect.succeed(
+        (input?.questions ?? []).filter((question) =>
+          (request.sessionIds ?? [request.sessionId]).includes(question.sessionID),
+        ),
+      ),
+    listProjects: () =>
+      Effect.succeed(
+        input?.projects ?? [
+          {
+            directory: "/Users/jackblanc/projects/opencode-event-bridge",
+            id: "project-id",
+            name: "opencode-event-bridge",
+          },
+        ],
+      ),
+    listSessionTree: () => Effect.succeed(input?.sessionIds ?? ["opencode-session-id"]),
+    listWorktrees: () => Effect.succeed(input?.worktrees ?? []),
+    promptAsync: (prompt) =>
+      Effect.sync(() => {
+        input?.prompts?.push({ body: prompt.body, sessionId: prompt.sessionId });
+      }).pipe(Effect.asVoid),
+    removeWorktree: (worktree) =>
+      input?.removeWorktreeFailure === true
+        ? Effect.fail(new OpenCodeClientError({ detail: "remove failed", reason: "RequestFailed" }))
+        : Effect.sync(() => {
+            input?.removals?.push(worktree.workspaceDirectory);
+          }).pipe(Effect.asVoid),
+    replyPermission: (reply) =>
+      Effect.sync(() => {
+        input?.permissionReplies?.push(reply.reply);
+        input?.permissionReplyRequests?.push({
+          reply: reply.reply,
+          requestId: reply.requestId,
+        });
+      }).pipe(Effect.asVoid),
+    replyQuestion: (reply) =>
+      Effect.sync(() => {
+        input?.questionReplies?.push({
+          answers: reply.answers,
+          requestId: reply.requestId,
+        });
+      }).pipe(Effect.asVoid),
+    waitUntilIdle: () => Effect.void,
+  }) satisfies OpenCodeClientService;
+
+const createdPayload = (): CreatedAgentSessionEventWebhookPayload => ({
   action: "created",
   agentSession: {
     appUserId: "app-user-id",
     archivedAt: null,
-    comment: {
-      body: "start",
-      id: "comment-id",
-      issueId: "issue-id",
-      userId: "user-id",
-    },
+    comment: { body: "start", id: "comment-id", issueId: "issue-id", userId: "user-id" },
     commentId: "comment-id",
     createdAt: "2026-05-14T00:00:00.000Z",
     creatorId: null,
@@ -143,12 +235,8 @@ const createdPayload = (
       description: "Issue body",
       id: "issue-id",
       identifier: "OEB-1",
-      labels,
-      team: {
-        id: "team-id",
-        key: "OEB",
-        name: "OpenCode Event Bridge",
-      },
+      labels: [{ name: "repo:opencode-event-bridge" }],
+      team: { id: "team-id", key: "OEB", name: "OpenCode Event Bridge" },
       teamId: "team-id",
       title: "Wire Linear to OpenCode",
       url: "https://linear.app/example/issue/OEB-1",
@@ -175,491 +263,744 @@ const createdPayload = (
   webhookTimestamp: 1,
 });
 
-const promptedPayload = (): LinearWebhookPayload => ({
+const promptedPayload = (body: string, signal: "select" | null = null): LinearWebhookPayload => ({
   ...createdPayload(),
   action: "prompted",
   agentActivity: {
     agentSessionId: "linear-session-id",
-    content: {
-      body: "continue here",
-      type: "text",
-    },
+    content: { body, type: "prompt" },
     createdAt: "2026-05-14T00:01:00.000Z",
     id: "activity-id",
-    signal: null,
+    signal,
     updatedAt: "2026-05-14T00:01:00.000Z",
     userId: "user-id",
   },
-  guidance: null,
   promptContext: null,
   webhookId: "prompted-webhook-id",
 });
 
+const stopPayload = (): LinearWebhookPayload => ({
+  ...createdPayload(),
+  action: "prompted",
+  agentActivity: {
+    agentSessionId: "linear-session-id",
+    content: { body: "", type: "prompt" },
+    createdAt: "2026-05-14T00:01:00.000Z",
+    id: "activity-id",
+    signal: "stop",
+    updatedAt: "2026-05-14T00:01:00.000Z",
+    userId: "user-id",
+  },
+  promptContext: null,
+  webhookId: "prompted-webhook-id",
+});
+
+const issuePayload = (): LinearWebhookPayload => ({
+  action: "update",
+  createdAt: "2026-05-14T00:00:00.000Z",
+  data: {
+    id: "issue-id",
+    identifier: "OEB-1",
+    state: { color: "#fff", id: "state-id", name: "Done", type: "completed" },
+  },
+  organizationId: "org-id",
+  type: "Issue",
+  updatedFrom: null,
+  url: "https://linear.app/example/issue/OEB-1",
+  webhookId: "issue-webhook-id",
+  webhookTimestamp: 1,
+});
+
+const provide = (input: {
+  readonly store: ReturnType<typeof makeKv>;
+  readonly linear: LinearHttpClientService;
+  readonly opencode: OpenCodeClientService;
+  readonly cancels?: Array<string>;
+  readonly runs?: Array<OpenCodeRunRecord>;
+}) =>
+  [
+    Layer.succeed(LinearHttpClient)(input.linear),
+    Layer.succeed(LinearOrgAuthStore)({ getOrgAuth: () => Effect.succeed(orgAuth) }),
+    Layer.succeed(LinearSessionStore)(makeLinearSessionStore(input.store.kv)),
+    Layer.succeed(OpenCodeClient)(input.opencode),
+    Layer.succeed(OpenCodeRunObserverService)(makeObserver(input.runs ?? [], input.cancels ?? [])),
+  ] satisfies [
+    Layer.Layer<LinearHttpClient>,
+    Layer.Layer<LinearOrgAuthStore>,
+    Layer.Layer<LinearSessionStore>,
+    Layer.Layer<OpenCodeClient>,
+    Layer.Layer<OpenCodeRunObserverService>,
+  ];
+
+describe("LinearSessionStore", () => {
+  it("preserves invalid record cause and key", async () => {
+    const key = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const store = makeLinearSessionStore(makeKv(new Map([[key, JSON.stringify({})]])).kv);
+
+    const error = await Effect.runPromise(
+      store
+        .getSessionLocator({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" })
+        .pipe(Effect.flip),
+    );
+
+    expect(error).toBeInstanceOf(LinearSessionStoreError);
+    expect(error.reason).toBe("InvalidRecord");
+    expect(error.key).toBe(key);
+  });
+});
+
 describe("processLinearWebhook", () => {
-  it("creates a workspace and new OpenCode session for created Linear agent sessions", async () => {
+  it("starts a labelled issue and stores a session locator", async () => {
     const store = makeKv();
-    const worktrees: Array<{ readonly branch: string; readonly projectDirectory: string }> = [];
-    const sessions: Array<{ readonly title: string; readonly workspaceDirectory: string }> = [];
-    const messages: Array<{
-      readonly body: string;
-      readonly sessionId: string;
-      readonly workspaceDirectory: string;
-    }> = [];
-    const runs: Array<OpenCodeRunRecord> = [];
+    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
     const activities: Array<{
       readonly agentSessionId: string;
       readonly content: LinearAgentActivityContent;
     }> = [];
-    const links: Array<{
-      readonly agentSessionId: string;
-      readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
-    }> = [];
-    const opencode: OpenCodeClientService = {
-      createSession: (input) =>
-        Effect.sync(() => {
-          sessions.push(input);
-          return { id: "opencode-session-id" };
-        }),
-      createWorktree: (input) =>
-        Effect.sync(() => {
-          worktrees.push(input);
-          return { workspaceDirectory: "/tmp/opencode/oeb-1" };
-        }),
-      resolveProject: (input) =>
-        Effect.sync(() => {
-          expect(input).toEqual({ project: "opencode-event-bridge" });
-          return {
-            directory: "/Users/jackblanc/projects/opencode-event-bridge",
-            id: "project-id",
-          };
-        }),
-      completedResponse: () => Effect.succeed({ body: "OpenCode finished" }),
-      waitUntilIdle: () => Effect.void,
-      promptAsync: (input) =>
-        Effect.sync(() => {
-          messages.push(input);
-        }).pipe(Effect.asVoid),
-    };
 
     await Effect.runPromise(
       processLinearWebhook(createdPayload()).pipe(
-        Effect.provide([
-          Layer.succeed(LinearHttpClient)(makeLinear(activities, links)),
-          Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
-          Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
-          Layer.succeed(OpenCodeClient)(opencode),
-          Layer.succeed(OpenCodeRunObserverService)(makeObserver(runs)),
-        ]),
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ prompts }),
+            store,
+          }),
+        ),
       ),
     );
 
-    expect(worktrees).toEqual([
-      { branch: "oeb-1", projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge" },
-    ]);
-    expect(sessions).toEqual([
-      { title: "Wire Linear to OpenCode", workspaceDirectory: "/tmp/opencode/oeb-1" },
-    ]);
-    expect(messages).toEqual([
-      {
-        body: "start",
-        sessionId: "opencode-session-id",
-        workspaceDirectory: "/tmp/opencode/oeb-1",
-      },
-    ]);
-    expect(activities).toEqual([
-      {
-        agentSessionId: "linear-session-id",
-        content: { body: "Accepted. Starting OpenCode.", type: "thought" },
-      },
-    ]);
-    expect(runs).toEqual([
-      {
-        accessToken: "linear-access-token",
-        linearAgentSessionId: "linear-session-id",
-        linearIssueIdentifier: "OEB-1",
-        opencodeSessionId: "opencode-session-id",
-        opencodeWorkspaceDirectory: "/tmp/opencode/oeb-1",
-      },
-    ]);
-    expect(links).toEqual([
-      {
-        agentSessionId: "linear-session-id",
-        externalUrls: [
-          {
-            label: "OpenCode",
-            url: "http://localhost:4096/L1VzZXJzL2phY2tibGFuYy9wcm9qZWN0cy9vcGVuY29kZS1ldmVudC1icmlkZ2U/session/opencode-session-id",
-          },
-        ],
-      },
-    ]);
-    expect(
-      store.values.get(issueWorktreeKey({ linearIssueId: "issue-id", organizationId: "org-id" })),
-    ).toBe(
-      JSON.stringify({
-        linearIssueId: "issue-id",
-        opencodeWorkspaceDirectory: "/tmp/opencode/oeb-1",
-        organizationId: "org-id",
-      }),
-    );
+    expect(prompts).toEqual([{ body: "start", sessionId: "opencode-session-id" }]);
     expect(
       store.values.get(
         agentSessionKey({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" }),
       ),
-    ).toBe(
+    ).toBe(JSON.stringify(locator));
+  });
+
+  it("elicits project selection when no label matches", async () => {
+    const store = makeKv();
+    const activities: Array<ActivityRecord> = [];
+    const pendingKey = pendingInputKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+
+    await Effect.runPromise(
+      processLinearWebhook(createdPayload()).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities, labels: [] }),
+            opencode: makeOpencode(),
+            store,
+          }),
+        ),
+      ),
+    );
+
+    expect(activities.at(-1)?.content.type).toBe("elicitation");
+    expect(activities.at(-1)?.signal).toBe("select");
+    expect(store.values.get(pendingKey)).toBe(
       JSON.stringify({
         linearAgentSessionId: "linear-session-id",
-        linearIssueId: "issue-id",
-        opencodeWorkspaceDirectory: "/tmp/opencode/oeb-1",
-        opencodeSessionId: "opencode-session-id",
-        organizationId: "org-id",
+        promptContext: "start",
+        type: "projectSelection",
       }),
     );
   });
 
-  it("ignores duplicate created Linear agent sessions", async () => {
+  it("matches plain and grouped project labels", async () => {
+    const labels = [
+      [{ id: "plain", name: "opencode-event-bridge", parent: null }],
+      [{ id: "grouped", name: "opencode-event-bridge", parent: { name: "repo" } }],
+    ];
+
+    await Promise.all(
+      labels.map(async (group) => {
+        const store = makeKv();
+        const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+        const activities: Array<ActivityRecord> = [];
+
+        await Effect.runPromise(
+          processLinearWebhook(createdPayload()).pipe(
+            Effect.provide(
+              provide({
+                linear: makeLinear({ activities, labels: group }),
+                opencode: makeOpencode({ prompts }),
+                store,
+              }),
+            ),
+          ),
+        );
+
+        expect(prompts).toEqual([{ body: "start", sessionId: "opencode-session-id" }]);
+      }),
+    );
+  });
+
+  it("elicits project selection when labels are ambiguous", async () => {
+    const store = makeKv();
+    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+    const activities: Array<ActivityRecord> = [];
+
+    await Effect.runPromise(
+      processLinearWebhook(createdPayload()).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({
+              projects: [
+                {
+                  directory: "/Users/jackblanc/projects/opencode-event-bridge",
+                  id: "project-id",
+                  name: "opencode-event-bridge",
+                },
+                {
+                  directory: "/tmp/opencode-event-bridge",
+                  id: "project-id-2",
+                  name: "other",
+                },
+              ],
+              prompts,
+            }),
+            store,
+          }),
+        ),
+      ),
+    );
+
+    expect(prompts).toEqual([]);
+    expect(activities.at(-1)?.content.type).toBe("elicitation");
+    expect(activities.at(-1)?.signalMetadata?.options).toEqual([
+      { label: "opencode-event-bridge", value: "opencode-event-bridge" },
+      { label: "other", value: "other" },
+    ]);
+  });
+
+  it("continues an existing OpenCode session before reading labels", async () => {
+    const key = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const store = makeKv(new Map([[key, JSON.stringify(locator)]]));
+    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+    const activities: Array<{
+      readonly agentSessionId: string;
+      readonly content: LinearAgentActivityContent;
+    }> = [];
+
+    await Effect.runPromise(
+      processLinearWebhook(promptedPayload("continue")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities, labels: [] }),
+            opencode: makeOpencode({ prompts }),
+            store,
+          }),
+        ),
+      ),
+    );
+
+    expect(prompts).toEqual([{ body: "continue", sessionId: "opencode-session-id" }]);
+  });
+
+  it("starts after project selection and writes the project label", async () => {
+    const pendingKey = pendingInputKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
     const store = makeKv(
       new Map([
         [
-          agentSessionKey({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" }),
+          pendingKey,
           JSON.stringify({
             linearAgentSessionId: "linear-session-id",
-            linearIssueId: "issue-id",
-            opencodeSessionId: "opencode-session-id",
-            opencodeWorkspaceDirectory: "/tmp/opencode/oeb-1",
-            organizationId: "org-id",
+            promptContext: "original prompt context",
+            type: "projectSelection",
           }),
         ],
       ]),
     );
-    const worktrees: Array<{ readonly branch: string; readonly projectDirectory: string }> = [];
-    const sessions: Array<{ readonly title: string; readonly workspaceDirectory: string }> = [];
-    const messages: Array<{
-      readonly body: string;
-      readonly sessionId: string;
-      readonly workspaceDirectory: string;
-    }> = [];
-    const activities: Array<{
-      readonly agentSessionId: string;
-      readonly content: LinearAgentActivityContent;
-    }> = [];
-    const links: Array<{
-      readonly agentSessionId: string;
-      readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
-    }> = [];
-    const runs: Array<OpenCodeRunRecord> = [];
-    const opencode: OpenCodeClientService = {
-      createSession: (input) =>
-        Effect.sync(() => {
-          sessions.push(input);
-          return { id: "unused" };
-        }),
-      createWorktree: (input) =>
-        Effect.sync(() => {
-          worktrees.push(input);
-          return { workspaceDirectory: "unused" };
-        }),
-      resolveProject: () => Effect.succeed({ directory: "unused", id: "unused" }),
-      completedResponse: () => Effect.succeed({ body: "unused" }),
-      waitUntilIdle: () => Effect.void,
-      promptAsync: (input) =>
-        Effect.sync(() => {
-          messages.push(input);
-        }).pipe(Effect.asVoid),
-    };
+    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+    const labelWrites: Array<string> = [];
+    const activities: Array<ActivityRecord> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(createdPayload()).pipe(
-        Effect.provide([
-          Layer.succeed(LinearHttpClient)(makeLinear(activities, links)),
-          Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
-          Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
-          Layer.succeed(OpenCodeClient)(opencode),
-          Layer.succeed(OpenCodeRunObserverService)(makeObserver(runs)),
-        ]),
+      processLinearWebhook(promptedPayload("opencode-event-bridge")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities, labelWrites, labels: [] }),
+            opencode: makeOpencode({ prompts }),
+            store,
+          }),
+        ),
       ),
     );
 
-    expect(worktrees).toEqual([]);
-    expect(sessions).toEqual([]);
-    expect(messages).toEqual([]);
-    expect(activities).toEqual([]);
-    expect(links).toEqual([]);
-  });
-
-  it("posts a Linear error activity when repository routing is missing", async () => {
-    const store = makeKv();
-    const activities: Array<{
-      readonly agentSessionId: string;
-      readonly content: LinearAgentActivityContent;
-    }> = [];
-    const links: Array<{
-      readonly agentSessionId: string;
-      readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
-    }> = [];
-    const opencode: OpenCodeClientService = {
-      createSession: () => Effect.succeed({ id: "unused" }),
-      createWorktree: () => Effect.succeed({ workspaceDirectory: "unused" }),
-      resolveProject: () => Effect.succeed({ directory: "unused", id: "unused" }),
-      completedResponse: () => Effect.succeed({ body: "unused" }),
-      waitUntilIdle: () => Effect.void,
-      promptAsync: () => Effect.void,
-    };
-
-    await Effect.runPromise(
-      processLinearWebhook(createdPayload()).pipe(
-        Effect.provide([
-          Layer.succeed(LinearHttpClient)(makeLinear(activities, links, [])),
-          Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
-          Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
-          Layer.succeed(OpenCodeClient)(opencode),
-          Layer.succeed(OpenCodeRunObserverService)(makeObserver([])),
-        ]),
-      ),
-    );
-
-    expect(activities).toEqual([
-      {
-        agentSessionId: "linear-session-id",
-        content: { body: "Accepted. Starting OpenCode.", type: "thought" },
-      },
-      {
-        agentSessionId: "linear-session-id",
-        content: {
-          body: "I cannot start because this issue is missing a `repo:*` label.",
-          type: "error",
-        },
-      },
+    expect(labelWrites).toEqual(["repo:opencode-event-bridge"]);
+    expect(prompts).toEqual([
+      { body: "original prompt context", sessionId: "opencode-session-id" },
     ]);
-    expect(links).toEqual([]);
+    expect(store.values.has(pendingKey)).toBe(false);
   });
 
-  it("posts a Linear error activity when repository routing is ambiguous", async () => {
+  it("continues startup and warns when project label write is rejected", async () => {
     const store = makeKv();
-    const activities: Array<{
-      readonly agentSessionId: string;
-      readonly content: LinearAgentActivityContent;
-    }> = [];
-    const links: Array<{
-      readonly agentSessionId: string;
-      readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
-    }> = [];
-    const opencode: OpenCodeClientService = {
-      createSession: () => Effect.succeed({ id: "unused" }),
-      createWorktree: () => Effect.succeed({ workspaceDirectory: "unused" }),
-      resolveProject: () => Effect.succeed({ directory: "unused", id: "unused" }),
-      completedResponse: () => Effect.succeed({ body: "unused" }),
-      waitUntilIdle: () => Effect.void,
-      promptAsync: () => Effect.void,
-    };
+    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+    const activities: Array<ActivityRecord> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(createdPayload()).pipe(
-        Effect.provide([
-          Layer.succeed(LinearHttpClient)(
-            makeLinear(activities, links, [
-              { name: "repo:project-a", parent: null },
-              { name: "repo:project-b", parent: null },
-            ]),
-          ),
-          Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
-          Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
-          Layer.succeed(OpenCodeClient)(opencode),
-          Layer.succeed(OpenCodeRunObserverService)(makeObserver([])),
-        ]),
+      processLinearWebhook(promptedPayload("opencode-event-bridge")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities, labelWriteFailure: true, labels: [] }),
+            opencode: makeOpencode({ prompts }),
+            store,
+          }),
+        ),
       ),
     );
 
-    expect(activities).toEqual([
-      {
-        agentSessionId: "linear-session-id",
-        content: { body: "Accepted. Starting OpenCode.", type: "thought" },
-      },
-      {
-        agentSessionId: "linear-session-id",
-        content: {
-          body: "I cannot start because this issue has multiple `repo:*` labels.",
-          type: "error",
-        },
-      },
-    ]);
-    expect(links).toEqual([]);
+    expect(prompts).toEqual([{ body: "start", sessionId: "opencode-session-id" }]);
+    expect(activities.map((activity) => activity.content)).toContainEqual({
+      body: "Warning: could not write Linear repo label.",
+      type: "response",
+    });
   });
 
-  it("uses child labels in the repo label group for repository routing", async () => {
+  it("does not start when project label write fails for a non-permission reason", async () => {
     const store = makeKv();
-    const worktrees: Array<{ readonly branch: string; readonly projectDirectory: string }> = [];
-    const activities: Array<{
-      readonly agentSessionId: string;
-      readonly content: LinearAgentActivityContent;
-    }> = [];
-    const links: Array<{
-      readonly agentSessionId: string;
-      readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
-    }> = [];
-    const runs: Array<OpenCodeRunRecord> = [];
-    const opencode: OpenCodeClientService = {
-      createSession: () => Effect.succeed({ id: "opencode-session-id" }),
-      createWorktree: (input) =>
-        Effect.sync(() => {
-          worktrees.push(input);
-          return { workspaceDirectory: "/tmp/opencode/oeb-1" };
-        }),
-      resolveProject: (input) =>
-        Effect.sync(() => {
-          expect(input).toEqual({ project: "opencode-event-bridge" });
-          return {
-            directory: "/Users/jackblanc/projects/opencode-event-bridge",
-            id: "project-id",
-          };
-        }),
-      completedResponse: () => Effect.succeed({ body: "done" }),
-      waitUntilIdle: () => Effect.void,
-      promptAsync: () => Effect.void,
-    };
+    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+    const activities: Array<ActivityRecord> = [];
 
-    await Effect.runPromise(
-      processLinearWebhook(createdPayload()).pipe(
-        Effect.provide([
-          Layer.succeed(LinearHttpClient)(
-            makeLinear(activities, links, [
-              { name: "opencode-event-bridge", parent: { name: "repo" } },
-            ]),
-          ),
-          Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
-          Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
-          Layer.succeed(OpenCodeClient)(opencode),
-          Layer.succeed(OpenCodeRunObserverService)(makeObserver(runs)),
-        ]),
+    const result = await Effect.runPromise(
+      processLinearWebhook(promptedPayload("opencode-event-bridge")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({
+              activities,
+              labelWriteError: new LinearHttpClientError({
+                cause: "schema changed",
+                reason: "InvalidGraphqlResponse",
+              }),
+              labels: [],
+            }),
+            opencode: makeOpencode({ prompts }),
+            store,
+          }),
+        ),
       ),
     );
 
-    expect(worktrees).toEqual([
-      { branch: "oeb-1", projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge" },
-    ]);
+    expect(result).toBe("error");
+    expect(prompts).toEqual([]);
+    expect(
+      store.values.has(
+        agentSessionKey({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" }),
+      ),
+    ).toBe(false);
+    expect(activities.map((activity) => activity.content)).toContainEqual({
+      body: "OpenCode run failed. Check bridge logs.",
+      type: "error",
+    });
   });
 
-  it("sends prompted Linear agent activity to the existing OpenCode session", async () => {
+  it("replies to pending permission and clears pending input", async () => {
+    const sessionKey = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const pendingKey = pendingInputKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
     const store = makeKv(
       new Map([
+        [sessionKey, JSON.stringify(locator)],
         [
-          agentSessionKey({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" }),
+          pendingKey,
           JSON.stringify({
             linearAgentSessionId: "linear-session-id",
-            linearIssueId: "issue-id",
+            opencodeRequestId: "permission-id",
             opencodeSessionId: "opencode-session-id",
-            opencodeWorkspaceDirectory: "/tmp/opencode/oeb-1",
-            organizationId: "org-id",
+            type: "permission",
           }),
         ],
       ]),
     );
-    const messages: Array<{
-      readonly body: string;
-      readonly sessionId: string;
-      readonly workspaceDirectory: string;
-    }> = [];
+    const permissionReplies: Array<string> = [];
+    const runs: Array<OpenCodeRunRecord> = [];
     const activities: Array<{
       readonly agentSessionId: string;
       readonly content: LinearAgentActivityContent;
     }> = [];
-    const links: Array<{
-      readonly agentSessionId: string;
-      readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
-    }> = [];
-    const runs: Array<OpenCodeRunRecord> = [];
-    const opencode: OpenCodeClientService = {
-      createSession: () => Effect.succeed({ id: "unused" }),
-      createWorktree: () => Effect.succeed({ workspaceDirectory: "unused" }),
-      resolveProject: () => Effect.succeed({ directory: "unused", id: "unused" }),
-      completedResponse: () => Effect.succeed({ body: "continued" }),
-      waitUntilIdle: () => Effect.void,
-      promptAsync: (input) =>
-        Effect.sync(() => {
-          messages.push(input);
-        }).pipe(Effect.asVoid),
-    };
 
     await Effect.runPromise(
-      processLinearWebhook(promptedPayload()).pipe(
-        Effect.provide([
-          Layer.succeed(LinearHttpClient)(makeLinear(activities, links)),
-          Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
-          Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
-          Layer.succeed(OpenCodeClient)(opencode),
-          Layer.succeed(OpenCodeRunObserverService)(makeObserver(runs)),
-        ]),
+      processLinearWebhook(promptedPayload("Approve Always")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ permissionReplies }),
+            runs,
+            store,
+          }),
+        ),
       ),
     );
 
-    expect(messages).toEqual([
+    expect(permissionReplies).toEqual(["always"]);
+    expect(store.values.has(pendingKey)).toBe(false);
+    expect(runs).toEqual([
       {
-        body: "continue here",
-        sessionId: "opencode-session-id",
+        linearAgentSessionId: "linear-session-id",
+        opencodeSessionId: "opencode-session-id",
+        organizationId: "org-id",
+        projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge",
         workspaceDirectory: "/tmp/opencode/oeb-1",
       },
     ]);
-    expect(activities).toEqual([
-      {
-        agentSessionId: "linear-session-id",
-        content: { body: "Accepted. Continuing OpenCode.", type: "thought" },
-      },
-    ]);
-    expect(runs).toEqual([
-      {
-        accessToken: "linear-access-token",
-        linearAgentSessionId: "linear-session-id",
-        linearIssueIdentifier: "OEB-1",
-        opencodeSessionId: "opencode-session-id",
-        opencodeWorkspaceDirectory: "/tmp/opencode/oeb-1",
-      },
-    ]);
-    expect(links).toEqual([]);
   });
 
-  it("posts a Linear error activity when a follow-up has no stored OpenCode session", async () => {
-    const store = makeKv();
+  it("recovers pending permission from OpenCode before continuing", async () => {
+    const sessionKey = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const pendingKey = pendingInputKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const store = makeKv(new Map([[sessionKey, JSON.stringify(locator)]]));
+    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+    const activities: Array<ActivityRecord> = [];
+
+    await Effect.runPromise(
+      processLinearWebhook(promptedPayload("continue")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({
+              permissions: [
+                {
+                  always: [],
+                  id: "permission-id",
+                  metadata: {},
+                  patterns: ["*"],
+                  permission: "Run command?",
+                  sessionID: "child-session-id",
+                },
+              ],
+              prompts,
+              sessionIds: ["opencode-session-id", "child-session-id"],
+            }),
+            store,
+          }),
+        ),
+      ),
+    );
+
+    expect(prompts).toEqual([]);
+    expect(activities.at(-1)?.signal).toBe("select");
+    expect(store.values.get(pendingKey)).toBe(
+      JSON.stringify({
+        linearAgentSessionId: "linear-session-id",
+        opencodeRequestId: "permission-id",
+        opencodeSessionId: "child-session-id",
+        type: "permission",
+      }),
+    );
+  });
+
+  it("collects multi-question replies before replying to OpenCode", async () => {
+    const sessionKey = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const pendingKey = pendingInputKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const questions = [
+      {
+        header: "Color",
+        options: [{ description: "Red choice", label: "Red" }],
+        question: "Pick color",
+      },
+      {
+        header: "Animal",
+        options: [{ description: "Dog choice", label: "Dog" }],
+        question: "Pick animal",
+      },
+    ];
+    const store = makeKv(
+      new Map([
+        [sessionKey, JSON.stringify(locator)],
+        [
+          pendingKey,
+          JSON.stringify({
+            answers: [null, null],
+            linearAgentSessionId: "linear-session-id",
+            opencodeRequestId: "question-id",
+            opencodeSessionId: "opencode-session-id",
+            questions,
+            type: "question",
+          }),
+        ],
+      ]),
+    );
+    const questionReplies: Array<{
+      readonly answers: ReadonlyArray<ReadonlyArray<string>>;
+      readonly requestId: string;
+    }> = [];
+    const runs: Array<OpenCodeRunRecord> = [];
+    const activities: Array<ActivityRecord> = [];
+
+    await Effect.runPromise(
+      processLinearWebhook(promptedPayload("Red")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ questionReplies }),
+            runs,
+            store,
+          }),
+        ),
+      ),
+    );
+
+    expect(questionReplies).toEqual([]);
+    expect(activities.at(-1)?.content).toEqual({
+      body: "Pick animal\n\n- Dog: Dog choice",
+      type: "elicitation",
+    });
+
+    await Effect.runPromise(
+      processLinearWebhook(promptedPayload("Dog")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ questionReplies }),
+            runs,
+            store,
+          }),
+        ),
+      ),
+    );
+
+    expect(questionReplies).toEqual([{ answers: [["Red"], ["Dog"]], requestId: "question-id" }]);
+    expect(store.values.has(pendingKey)).toBe(false);
+    expect(runs).toEqual([
+      {
+        linearAgentSessionId: "linear-session-id",
+        opencodeSessionId: "opencode-session-id",
+        organizationId: "org-id",
+        projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge",
+        workspaceDirectory: "/tmp/opencode/oeb-1",
+      },
+    ]);
+  });
+
+  it("sends multiple selected answers for one OpenCode question", async () => {
+    const sessionKey = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const pendingKey = pendingInputKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const store = makeKv(
+      new Map([
+        [sessionKey, JSON.stringify(locator)],
+        [
+          pendingKey,
+          JSON.stringify({
+            answers: [null],
+            linearAgentSessionId: "linear-session-id",
+            opencodeRequestId: "question-id",
+            opencodeSessionId: "opencode-session-id",
+            questions: [
+              {
+                header: "Colors",
+                multiple: true,
+                options: [
+                  { description: "Red choice", label: "Red" },
+                  { description: "Blue choice", label: "Blue" },
+                ],
+                question: "Pick colors",
+              },
+            ],
+            type: "question",
+          }),
+        ],
+      ]),
+    );
+    const questionReplies: Array<{
+      readonly answers: ReadonlyArray<ReadonlyArray<string>>;
+      readonly requestId: string;
+    }> = [];
+    const activities: Array<ActivityRecord> = [];
+
+    await Effect.runPromise(
+      processLinearWebhook(promptedPayload("red, blue")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ questionReplies }),
+            store,
+          }),
+        ),
+      ),
+    );
+
+    expect(questionReplies).toEqual([{ answers: [["Red", "Blue"]], requestId: "question-id" }]);
+    expect(store.values.has(pendingKey)).toBe(false);
+  });
+
+  it("aborts on stop signal and posts stopped", async () => {
+    const key = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const store = makeKv(new Map([[key, JSON.stringify(locator)]]));
+    const aborts: Array<string> = [];
+    const cancels: Array<string> = [];
     const activities: Array<{
       readonly agentSessionId: string;
       readonly content: LinearAgentActivityContent;
     }> = [];
-    const links: Array<{
-      readonly agentSessionId: string;
-      readonly externalUrls: ReadonlyArray<{ readonly label: string; readonly url: string }>;
-    }> = [];
-    const opencode: OpenCodeClientService = {
-      createSession: () => Effect.succeed({ id: "unused" }),
-      createWorktree: () => Effect.succeed({ workspaceDirectory: "unused" }),
-      resolveProject: () => Effect.succeed({ directory: "unused", id: "unused" }),
-      completedResponse: () => Effect.succeed({ body: "unused" }),
-      waitUntilIdle: () => Effect.void,
-      promptAsync: () => Effect.void,
-    };
 
     await Effect.runPromise(
-      processLinearWebhook(promptedPayload()).pipe(
-        Effect.provide([
-          Layer.succeed(LinearHttpClient)(makeLinear(activities, links)),
-          Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
-          Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
-          Layer.succeed(OpenCodeClient)(opencode),
-          Layer.succeed(OpenCodeRunObserverService)(makeObserver([])),
-        ]),
+      processLinearWebhook(stopPayload()).pipe(
+        Effect.provide(
+          provide({
+            cancels,
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ aborts }),
+            store,
+          }),
+        ),
       ),
     );
 
-    expect(activities).toEqual([
-      {
-        agentSessionId: "linear-session-id",
-        content: { body: "Accepted. Continuing OpenCode.", type: "thought" },
-      },
-      {
-        agentSessionId: "linear-session-id",
-        content: {
-          body: "I cannot continue because I do not have an OpenCode session for this Linear agent session.",
-          type: "error",
-        },
-      },
-    ]);
-    expect(links).toEqual([]);
+    expect(aborts).toEqual(["opencode-session-id"]);
+    expect(cancels).toEqual(["linear-session-id"]);
+    expect(activities.at(-1)?.content).toEqual({ body: "Stopped.", type: "response" });
+  });
+
+  it("cleans up completed issues after aborting sessions", async () => {
+    const key = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const store = makeKv(new Map([[key, JSON.stringify(locator)]]));
+    const aborts: Array<string> = [];
+    const cancels: Array<string> = [];
+    const removals: Array<string> = [];
+    const activities: Array<{
+      readonly agentSessionId: string;
+      readonly content: LinearAgentActivityContent;
+    }> = [];
+
+    await Effect.runPromise(
+      processLinearWebhook(issuePayload()).pipe(
+        Effect.provide(
+          provide({
+            cancels,
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ aborts, removals }),
+            store,
+          }),
+        ),
+      ),
+    );
+
+    expect(aborts).toEqual(["opencode-session-id"]);
+    expect(cancels).toEqual(["linear-session-id"]);
+    expect(removals).toEqual(["/tmp/opencode/oeb-1"]);
+    expect(store.values.has(key)).toBe(false);
+  });
+
+  it("keeps cleanup state when worktree removal fails", async () => {
+    const key = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const store = makeKv(new Map([[key, JSON.stringify(locator)]]));
+    const aborts: Array<string> = [];
+    const cancels: Array<string> = [];
+    const removals: Array<string> = [];
+    const activities: Array<ActivityRecord> = [];
+
+    const error = await Effect.runPromise(
+      processLinearWebhook(issuePayload()).pipe(
+        Effect.provide(
+          provide({
+            cancels,
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ aborts, removals, removeWorktreeFailure: true }),
+            store,
+          }),
+        ),
+        Effect.flip,
+      ),
+    );
+
+    expect(error).toMatchObject({ reason: "OpenCodeFailure" });
+    expect(aborts).toEqual(["opencode-session-id"]);
+    expect(cancels).toEqual(["linear-session-id"]);
+    expect(removals).toEqual([]);
+    expect(store.values.has(key)).toBe(true);
+  });
+
+  it("dedupes worktree removal across issue agent sessions", async () => {
+    const first = agentSessionKey({
+      linearAgentSessionId: "linear-session-id",
+      organizationId: "org-id",
+    });
+    const second = agentSessionKey({
+      linearAgentSessionId: "linear-session-2",
+      organizationId: "org-id",
+    });
+    const secondLocator = {
+      ...locator,
+      linearAgentSessionId: "linear-session-2",
+      opencodeSessionId: "opencode-session-2",
+    };
+    const store = makeKv(
+      new Map([
+        [first, JSON.stringify(locator)],
+        [second, JSON.stringify(secondLocator)],
+      ]),
+    );
+    const aborts: Array<string> = [];
+    const cancels: Array<string> = [];
+    const removals: Array<string> = [];
+    const activities: Array<ActivityRecord> = [];
+
+    await Effect.runPromise(
+      processLinearWebhook(issuePayload()).pipe(
+        Effect.provide(
+          provide({
+            cancels,
+            linear: makeLinear({
+              activities,
+              issueSessionIds: ["linear-session-id", "linear-session-2"],
+            }),
+            opencode: makeOpencode({ aborts, removals }),
+            store,
+          }),
+        ),
+      ),
+    );
+
+    expect(aborts).toEqual(["opencode-session-id", "opencode-session-2"]);
+    expect(cancels).toEqual(["linear-session-id", "linear-session-2"]);
+    expect(removals).toEqual(["/tmp/opencode/oeb-1"]);
+    expect(store.values.has(first)).toBe(false);
+    expect(store.values.has(second)).toBe(false);
   });
 });

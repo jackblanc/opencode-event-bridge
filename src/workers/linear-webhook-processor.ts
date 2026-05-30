@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
@@ -53,122 +54,156 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
     const sessionStore = yield* Cloudflare.KVNamespace.bind(sessionStoreResource);
     const orgAuthResource = yield* LinearOrgAuthStoreResource;
     const orgAuthStore = yield* Cloudflare.KVNamespace.bind(orgAuthResource);
+    const oauthClientId = yield* Alchemy.Secret("LINEAR_OAUTH_CLIENT_ID");
+    const oauthClientSecret = yield* Alchemy.Secret("LINEAR_OAUTH_CLIENT_SECRET");
     const opencodeService = yield* OpenCodeVpcService.pipe(Effect.orDie);
     const bindVpcService = yield* Cloudflare.VpcServiceBinding;
     const opencodeBinding = yield* bindVpcService(opencodeService);
     const observers = yield* OpenCodeRunObserver;
     const linear = yield* LinearHttpClient;
+    const ctx = yield* Alchemy.RuntimeContext;
 
     yield* Cloudflare.messages(queueResource).subscribe((stream) =>
       Stream.runForEach(stream, (msg) => {
-        const effect: Effect.Effect<
-          void,
-          unknown,
-          Alchemy.RuntimeContextInterface | Cloudflare.WorkerEnvironment
-        > = Effect.gen(function* () {
-          const messageId = "unknown";
-          const env = yield* Cloudflare.WorkerEnvironment;
-          const ctx = yield* Alchemy.RuntimeContext;
-          const store = makeLinearSessionStore({
-            get: (key) =>
-              sessionStore
-                .get(key)
-                .pipe(
-                  Effect.provideService(Alchemy.RuntimeContext, ctx),
-                  Effect.provideService(Cloudflare.WorkerEnvironment, env),
-                ),
-            put: (key, value) =>
-              sessionStore
-                .put(key, value)
-                .pipe(
-                  Effect.provideService(Alchemy.RuntimeContext, ctx),
-                  Effect.provideService(Cloudflare.WorkerEnvironment, env),
-                ),
-          });
-          const orgAuth = makeLinearOrgAuthStore({
-            get: (key) =>
-              orgAuthStore
-                .get(key)
-                .pipe(
-                  Effect.provideService(Alchemy.RuntimeContext, ctx),
-                  Effect.provideService(Cloudflare.WorkerEnvironment, env),
-                ),
-          });
-          const fetchOpenCode = async (input: string | URL | Request, init?: RequestInit) => {
-            const request = input instanceof Request ? input : new Request(input, init);
-            const url = new URL(request.url);
-            url.protocol = "http:";
-            url.hostname = openCodePrivateHost;
-            url.port = openCodePrivatePort;
-            const opencodeRequest = new Request(url, request);
-            opencodeRequest.headers.set("host", url.host);
-            const webResponse = await Effect.gen(function* () {
-              const response = yield* opencodeBinding
-                .fetch(
-                  HttpServerRequest.toClientRequest(HttpServerRequest.fromWeb(opencodeRequest)),
-                )
-                .pipe(Effect.provideService(Cloudflare.WorkerEnvironment, env));
+        const effect: Effect.Effect<void, unknown, Cloudflare.WorkerEnvironment> = Effect.gen(
+          function* () {
+            const messageId = "unknown";
+            const env = yield* Cloudflare.WorkerEnvironment;
+            const store = makeLinearSessionStore({
+              get: (key) =>
+                sessionStore
+                  .get(key)
+                  .pipe(
+                    Effect.provideService(Alchemy.RuntimeContext, ctx),
+                    Effect.provideService(Cloudflare.WorkerEnvironment, env),
+                  ),
+              put: (key, value) =>
+                sessionStore
+                  .put(key, value)
+                  .pipe(
+                    Effect.provideService(Alchemy.RuntimeContext, ctx),
+                    Effect.provideService(Cloudflare.WorkerEnvironment, env),
+                  ),
+              delete: (key) =>
+                sessionStore
+                  .delete(key)
+                  .pipe(
+                    Effect.provideService(Alchemy.RuntimeContext, ctx),
+                    Effect.provideService(Cloudflare.WorkerEnvironment, env),
+                  ),
+            });
+            const orgAuth = makeLinearOrgAuthStore(
+              {
+                get: (key) =>
+                  orgAuthStore
+                    .get(key)
+                    .pipe(
+                      Effect.provideService(Alchemy.RuntimeContext, ctx),
+                      Effect.provideService(Cloudflare.WorkerEnvironment, env),
+                    ),
+                put: (key, value) =>
+                  orgAuthStore
+                    .put(key, value)
+                    .pipe(
+                      Effect.provideService(Alchemy.RuntimeContext, ctx),
+                      Effect.provideService(Cloudflare.WorkerEnvironment, env),
+                    ),
+              },
+              (record) =>
+                Effect.gen(function* () {
+                  const clientId = yield* oauthClientId;
+                  const clientSecret = yield* oauthClientSecret;
+                  const token = yield* linear.refreshOAuthToken({
+                    clientId: Redacted.value(clientId),
+                    clientSecret: Redacted.value(clientSecret),
+                    refreshToken: record.refreshToken,
+                  });
+                  const now = Date.now();
 
-              const withoutBody =
-                response.status === 101 ||
-                response.status === 204 ||
-                response.status === 205 ||
-                response.status === 304;
-              return HttpServerResponse.toWeb(HttpServerResponse.fromClientResponse(response), {
-                withoutBody,
-              });
-            }).pipe(Effect.runPromise);
+                  return {
+                    ...record,
+                    accessToken: token.access_token,
+                    accessTokenExpiresAt: now + token.expires_in * 1_000,
+                    refreshToken: token.refresh_token,
+                  };
+                }),
+            );
+            const fetchOpenCode = async (input: string | URL | Request, init?: RequestInit) => {
+              const request = input instanceof Request ? input : new Request(input, init);
+              const url = new URL(request.url);
+              url.protocol = "http:";
+              url.hostname = openCodePrivateHost;
+              url.port = openCodePrivatePort;
+              const opencodeRequest = new Request(url, request);
+              opencodeRequest.headers.set("host", url.host);
+              const webResponse = await Effect.gen(function* () {
+                const response = yield* opencodeBinding
+                  .fetch(
+                    HttpServerRequest.toClientRequest(HttpServerRequest.fromWeb(opencodeRequest)),
+                  )
+                  .pipe(Effect.provideService(Cloudflare.WorkerEnvironment, env));
 
-            return webResponse;
-          };
-          const opencode = makeOpenCodeClient(fetchOpenCode);
-          const observer = makeOpenCodeRunObserverService(observers);
-          const payloadOption = yield* decodeLinearWebhookQueueMessage({
-            body: msg.body,
-            messageId,
-          });
+                const withoutBody =
+                  response.status === 101 ||
+                  response.status === 204 ||
+                  response.status === 205 ||
+                  response.status === 304;
+                return HttpServerResponse.toWeb(HttpServerResponse.fromClientResponse(response), {
+                  withoutBody,
+                });
+              }).pipe(Effect.runPromise);
 
-          if (Option.isNone(payloadOption)) {
-            return;
-          }
+              return webResponse;
+            };
+            const opencode = makeOpenCodeClient(fetchOpenCode);
+            const observer = makeOpenCodeRunObserverService(observers);
+            const payloadOption = yield* decodeLinearWebhookQueueMessage({
+              body: msg.body,
+              messageId,
+            });
 
-          const payload = payloadOption.value;
+            if (Option.isNone(payloadOption)) {
+              return;
+            }
 
-          yield* processLinearWebhook(payload).pipe(
-            Effect.tapCause((cause) =>
-              Effect.logError("linear webhook queue message failed", {
-                action: payload.action,
-                agentSessionId:
-                  payload.type === "AgentSessionEvent" ? payload.agentSession.id : undefined,
-                cause: Cause.pretty(cause),
-                issueId:
-                  payload.type === "AgentSessionEvent"
-                    ? payload.agentSession.issue.id
-                    : payload.data.id,
-                issueIdentifier:
-                  payload.type === "AgentSessionEvent"
-                    ? payload.agentSession.issue.identifier
-                    : payload.data.identifier,
-                messageId,
-                organizationId: payload.organizationId,
-                type: payload.type,
-                webhookId: payload.webhookId,
-              }),
-            ),
-            Effect.provideService(LinearHttpClient, linear),
-            Effect.provideService(LinearOrgAuthStore, orgAuth),
-            Effect.provideService(LinearSessionStore, store),
-            Effect.provideService(OpenCodeClient, opencode),
-            Effect.provideService(OpenCodeRunObserverService, observer),
-          );
+            const payload = payloadOption.value;
 
-          yield* Effect.log("linear webhook processed", {
-            webhookId: payload.webhookId,
-            type: payload.type,
-            action: payload.action,
-            organizationId: payload.organizationId,
-          });
-        });
+            yield* processLinearWebhook(payload).pipe(
+              Effect.tapCause((cause) =>
+                Effect.logError("linear webhook queue message failed", {
+                  action: payload.action,
+                  agentSessionId:
+                    payload.type === "AgentSessionEvent" ? payload.agentSession.id : undefined,
+                  cause: Cause.pretty(cause),
+                  issueId:
+                    payload.type === "AgentSessionEvent"
+                      ? payload.agentSession.issue.id
+                      : payload.data.id,
+                  issueIdentifier:
+                    payload.type === "AgentSessionEvent"
+                      ? payload.agentSession.issue.identifier
+                      : payload.data.identifier,
+                  messageId,
+                  organizationId: payload.organizationId,
+                  type: payload.type,
+                  webhookId: payload.webhookId,
+                }),
+              ),
+              Effect.provideService(LinearHttpClient, linear),
+              Effect.provideService(LinearOrgAuthStore, orgAuth),
+              Effect.provideService(LinearSessionStore, store),
+              Effect.provideService(OpenCodeClient, opencode),
+              Effect.provideService(OpenCodeRunObserverService, observer),
+            );
+
+            yield* Effect.log("linear webhook processed", {
+              webhookId: payload.webhookId,
+              type: payload.type,
+              action: payload.action,
+              organizationId: payload.organizationId,
+            });
+          },
+        );
 
         return effect;
       }),

@@ -1,28 +1,41 @@
+import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Schema } from "effect";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
+import type { LinearHttpClientService } from "../linear/client/client.ts";
+import type { LinearOrgAuthStoreService } from "../linear/oauth/auth.ts";
+import type { LinearSessionStoreService } from "../linear/session/store.ts";
+import type { OpenCodeClientService } from "./client.ts";
+
 import { LinearHttpClient } from "../linear/client/client.ts";
-import { makeOpenCodeClient } from "./client.ts";
+import { makeLinearOrgAuthStore } from "../linear/oauth/auth.ts";
+import { LinearOrgAuthStore as LinearOrgAuthStoreResource } from "../linear/oauth/store.ts";
+import { LinearSessionStoreKv } from "../linear/session/cloudflare.ts";
+import { LinearSessionStore, makeLinearSessionStore } from "../linear/session/store.ts";
+import { makeOpenCodeClient, OpenCodeClientError } from "./client.ts";
 import { openCodePrivateHost, openCodePrivatePort } from "./config.ts";
+import { processOpenCodeEvent } from "./events/process.ts";
 import { OpenCodeVpcService } from "./service.ts";
 
 export const OpenCodeRunRecord = Schema.Struct({
-  accessToken: Schema.String,
   linearAgentSessionId: Schema.String,
-  linearIssueIdentifier: Schema.String,
   opencodeSessionId: Schema.String,
-  opencodeWorkspaceDirectory: Schema.String,
+  organizationId: Schema.String,
+  projectDirectory: Schema.String,
+  workspaceDirectory: Schema.String,
 });
 
 export type OpenCodeRunRecord = Schema.Schema.Type<typeof OpenCodeRunRecord>;
 
 export type OpenCodeRunObserverServiceShape = {
+  readonly cancel: (input: { readonly linearAgentSessionId: string }) => Effect.Effect<void>;
   readonly start: (run: OpenCodeRunRecord) => Effect.Effect<void>;
 };
 
@@ -40,10 +53,186 @@ const detailFrom = (error: unknown) => {
   }
 
   if (error instanceof Error) {
+    if ("detail" in error && typeof error.detail === "string") {
+      return error.detail;
+    }
+
     return error.message;
   }
 
   return JSON.stringify(error);
+};
+
+export type OpenCodeRunObserverStorage = {
+  readonly clear: () => Effect.Effect<void>;
+  readonly get: () => Effect.Effect<unknown>;
+  readonly put: (run: OpenCodeRunRecord) => Effect.Effect<void>;
+  readonly schedule: () => Effect.Effect<void>;
+};
+
+export const makeOpenCodeRunObserverHandler = (input: {
+  readonly authStore: LinearOrgAuthStoreService;
+  readonly linear: LinearHttpClientService;
+  readonly opencode: OpenCodeClientService;
+  readonly state: OpenCodeRunObserverStorage;
+  readonly store: LinearSessionStoreService;
+}) => {
+  const postError = (item: {
+    readonly accessToken: string;
+    readonly run: OpenCodeRunRecord;
+    readonly error: unknown;
+  }) =>
+    input.linear
+      .createAgentActivity({
+        accessToken: item.accessToken,
+        agentSessionId: item.run.linearAgentSessionId,
+        content: { body: detailFrom(item.error), type: "error" },
+      })
+      .pipe(
+        Effect.tapError((cause) =>
+          Effect.logError("opencode run observer error activity failed", {
+            cause,
+            linearAgentSessionId: item.run.linearAgentSessionId,
+            opencodeSessionId: item.run.opencodeSessionId,
+            workspaceDirectory: item.run.workspaceDirectory,
+          }),
+        ),
+        Effect.ignore,
+      );
+
+  const complete = (run: OpenCodeRunRecord) =>
+    input.authStore.getOrgAuth({ organizationId: run.organizationId }).pipe(
+      Effect.flatMap((orgAuth) =>
+        input.opencode
+          .waitUntilIdle({
+            onEvent: (event, opencodeSessionIds) =>
+              processOpenCodeEvent({
+                event,
+                run: {
+                  accessToken: orgAuth.accessToken,
+                  linearAgentSessionId: run.linearAgentSessionId,
+                  opencodeSessionId: run.opencodeSessionId,
+                  opencodeSessionIds,
+                  organizationId: run.organizationId,
+                },
+              }).pipe(
+                Effect.provideService(LinearHttpClient, input.linear),
+                Effect.provideService(LinearSessionStore, input.store),
+              ),
+            requireStart: true,
+            sessionId: run.opencodeSessionId,
+            workspaceDirectory: run.workspaceDirectory,
+          })
+          .pipe(
+            Effect.flatMap(() =>
+              input.opencode.completedResponse({
+                sessionId: run.opencodeSessionId,
+                workspaceDirectory: run.workspaceDirectory,
+              }),
+            ),
+            Effect.flatMap((response) =>
+              input.linear.createAgentActivity({
+                accessToken: orgAuth.accessToken,
+                agentSessionId: run.linearAgentSessionId,
+                content: { body: response.body, type: "response" },
+              }),
+            ),
+            Effect.tap((activity) =>
+              Effect.log("opencode run observer final response posted", {
+                activityId: activity.id,
+                linearAgentSessionId: run.linearAgentSessionId,
+                opencodeSessionId: run.opencodeSessionId,
+                workspaceDirectory: run.workspaceDirectory,
+              }),
+            ),
+            Effect.flatMap(() => input.state.clear()),
+            Effect.tap(() =>
+              Effect.log("opencode run observer completed", {
+                linearAgentSessionId: run.linearAgentSessionId,
+                opencodeSessionId: run.opencodeSessionId,
+                workspaceDirectory: run.workspaceDirectory,
+              }),
+            ),
+            Effect.catch((error) => {
+              if (error instanceof OpenCodeClientError && error.reason === "InputPending") {
+                return input.state.schedule().pipe(
+                  Effect.tap(() =>
+                    Effect.log("opencode run observer awaiting input", {
+                      linearAgentSessionId: run.linearAgentSessionId,
+                      opencodeSessionId: run.opencodeSessionId,
+                      workspaceDirectory: run.workspaceDirectory,
+                    }),
+                  ),
+                );
+              }
+
+              return postError({ accessToken: orgAuth.accessToken, error, run }).pipe(
+                Effect.flatMap(() => input.state.clear()),
+                Effect.tap(() =>
+                  Effect.logError("opencode run observer terminated", {
+                    error: detailFrom(error),
+                    linearAgentSessionId: run.linearAgentSessionId,
+                    opencodeSessionId: run.opencodeSessionId,
+                    workspaceDirectory: run.workspaceDirectory,
+                  }),
+                ),
+              );
+            }),
+          ),
+      ),
+      Effect.catch((error) =>
+        input.state.schedule().pipe(
+          Effect.tap(() =>
+            Effect.logError("opencode run observer auth failed", {
+              error: detailFrom(error),
+              linearAgentSessionId: run.linearAgentSessionId,
+              organizationId: run.organizationId,
+            }),
+          ),
+        ),
+      ),
+    );
+
+  const observe = Effect.gen(function* () {
+    const stored = yield* input.state.get();
+    const run = yield* Schema.decodeUnknownEffect(OpenCodeRunRecord)(stored).pipe(
+      Effect.tapError((cause) =>
+        Effect.logError("opencode run observer invalid run record", { cause }),
+      ),
+      Effect.option,
+    );
+
+    if (Option.isNone(run)) {
+      yield* input.state.clear();
+      return;
+    }
+
+    yield* complete(run.value).pipe(
+      Effect.tapCause((cause) =>
+        Effect.logError("opencode run observer alarm failed", {
+          cause: Cause.pretty(cause),
+          linearAgentSessionId: run.value.linearAgentSessionId,
+          opencodeSessionId: run.value.opencodeSessionId,
+          workspaceDirectory: run.value.workspaceDirectory,
+        }),
+      ),
+    );
+  });
+
+  return {
+    alarm: () => observe,
+    cancel: () => input.state.clear(),
+    start: (run: OpenCodeRunRecord) =>
+      Effect.gen(function* () {
+        yield* input.state.put(run);
+        yield* input.state.schedule();
+        yield* Effect.log("opencode run observer started", {
+          linearAgentSessionId: run.linearAgentSessionId,
+          opencodeSessionId: run.opencodeSessionId,
+          workspaceDirectory: run.workspaceDirectory,
+        });
+      }),
+  };
 };
 
 export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespace<OpenCodeRunObserver>()(
@@ -52,7 +241,14 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
     const opencodeService = yield* OpenCodeVpcService.pipe(Effect.orDie);
     const bindVpcService = yield* Cloudflare.VpcServiceBinding;
     const opencodeBinding = yield* bindVpcService(opencodeService);
+    const sessionStoreResource = yield* LinearSessionStoreKv;
+    const sessionStore = yield* Cloudflare.KVNamespace.bind(sessionStoreResource);
+    const orgAuthResource = yield* LinearOrgAuthStoreResource;
+    const orgAuthStore = yield* Cloudflare.KVNamespace.bind(orgAuthResource);
+    const oauthClientId = yield* Alchemy.Secret("LINEAR_OAUTH_CLIENT_ID");
+    const oauthClientSecret = yield* Alchemy.Secret("LINEAR_OAUTH_CLIENT_SECRET");
     const linear = yield* LinearHttpClient;
+    const ctx = yield* Alchemy.RuntimeContext;
 
     const make = Effect.gen(function* () {
       const state = yield* Cloudflare.DurableObjectState;
@@ -84,118 +280,79 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
         return webResponse;
       };
       const opencode = makeOpenCodeClient(fetchOpenCode);
-
-      const schedule = () => state.storage.setAlarm(Date.now() + alarmDelayMillis);
-
-      const clear = () =>
-        state.storage.delete(runKey).pipe(Effect.flatMap(() => state.storage.deleteAlarm()));
-
-      const postError = (run: OpenCodeRunRecord, error: unknown) =>
-        linear
-          .createAgentActivity({
-            accessToken: run.accessToken,
-            agentSessionId: run.linearAgentSessionId,
-            content: { body: detailFrom(error), type: "error" },
-          })
-          .pipe(
-            Effect.tapError((cause) =>
-              Effect.logError("opencode run observer error activity failed", {
-                cause,
-                issueIdentifier: run.linearIssueIdentifier,
-                linearAgentSessionId: run.linearAgentSessionId,
-                opencodeSessionId: run.opencodeSessionId,
-                opencodeWorkspaceDirectory: run.opencodeWorkspaceDirectory,
-              }),
+      const store = makeLinearSessionStore({
+        delete: (key) =>
+          sessionStore
+            .delete(key)
+            .pipe(
+              Effect.provideService(Alchemy.RuntimeContext, ctx),
+              Effect.provideService(Cloudflare.WorkerEnvironment, env),
             ),
-            Effect.ignore,
-          );
-
-      const complete = (run: OpenCodeRunRecord) =>
-        opencode
-          .waitUntilIdle({
-            sessionId: run.opencodeSessionId,
-            workspaceDirectory: run.opencodeWorkspaceDirectory,
-          })
-          .pipe(
-            Effect.flatMap(() =>
-              opencode.completedResponse({
-                sessionId: run.opencodeSessionId,
-                workspaceDirectory: run.opencodeWorkspaceDirectory,
-              }),
+        get: (key) =>
+          sessionStore
+            .get(key)
+            .pipe(
+              Effect.provideService(Alchemy.RuntimeContext, ctx),
+              Effect.provideService(Cloudflare.WorkerEnvironment, env),
             ),
-            Effect.flatMap((response) =>
-              linear.createAgentActivity({
-                accessToken: run.accessToken,
-                agentSessionId: run.linearAgentSessionId,
-                content: { body: response.body, type: "response" },
-              }),
+        put: (key, value) =>
+          sessionStore
+            .put(key, value)
+            .pipe(
+              Effect.provideService(Alchemy.RuntimeContext, ctx),
+              Effect.provideService(Cloudflare.WorkerEnvironment, env),
             ),
-            Effect.flatMap(() => clear()),
-            Effect.tap(() =>
-              Effect.log("opencode run observer completed", {
-                issueIdentifier: run.linearIssueIdentifier,
-                linearAgentSessionId: run.linearAgentSessionId,
-                opencodeSessionId: run.opencodeSessionId,
-                opencodeWorkspaceDirectory: run.opencodeWorkspaceDirectory,
-              }),
-            ),
-            Effect.catch((error) =>
-              postError(run, error).pipe(
-                Effect.flatMap(() => clear()),
-                Effect.tap(() =>
-                  Effect.logError("opencode run observer terminated", {
-                    error: detailFrom(error),
-                    issueIdentifier: run.linearIssueIdentifier,
-                    linearAgentSessionId: run.linearAgentSessionId,
-                    opencodeSessionId: run.opencodeSessionId,
-                    opencodeWorkspaceDirectory: run.opencodeWorkspaceDirectory,
-                  }),
-                ),
-              ),
-            ),
-          );
-
-      const observe = Effect.gen(function* () {
-        const stored = yield* state.storage.get<OpenCodeRunRecord>(runKey);
-        const run = yield* Schema.decodeUnknownEffect(OpenCodeRunRecord)(stored).pipe(
-          Effect.tapError((cause) =>
-            Effect.logError("opencode run observer invalid run record", { cause }),
-          ),
-          Effect.option,
-        );
-
-        if (Option.isNone(run)) {
-          yield* clear();
-          return;
-        }
-
-        yield* complete(run.value).pipe(
-          Effect.tapCause((cause) =>
-            Effect.logError("opencode run observer alarm failed", {
-              cause: Cause.pretty(cause),
-              issueIdentifier: run.value.linearIssueIdentifier,
-              linearAgentSessionId: run.value.linearAgentSessionId,
-              opencodeSessionId: run.value.opencodeSessionId,
-              opencodeWorkspaceDirectory: run.value.opencodeWorkspaceDirectory,
-            }),
-          ),
-        );
       });
-
-      return {
-        alarm: () => observe,
-        start: (run: OpenCodeRunRecord) =>
+      const authStore = makeLinearOrgAuthStore(
+        {
+          get: (key) =>
+            orgAuthStore
+              .get(key)
+              .pipe(
+                Effect.provideService(Alchemy.RuntimeContext, ctx),
+                Effect.provideService(Cloudflare.WorkerEnvironment, env),
+              ),
+          put: (key, value) =>
+            orgAuthStore
+              .put(key, value)
+              .pipe(
+                Effect.provideService(Alchemy.RuntimeContext, ctx),
+                Effect.provideService(Cloudflare.WorkerEnvironment, env),
+              ),
+        },
+        (record) =>
           Effect.gen(function* () {
-            yield* state.storage.put(runKey, run);
-            yield* schedule();
-            yield* Effect.log("opencode run observer started", {
-              issueIdentifier: run.linearIssueIdentifier,
-              linearAgentSessionId: run.linearAgentSessionId,
-              opencodeSessionId: run.opencodeSessionId,
-              opencodeWorkspaceDirectory: run.opencodeWorkspaceDirectory,
+            const clientId = yield* oauthClientId;
+            const clientSecret = yield* oauthClientSecret;
+            const token = yield* linear.refreshOAuthToken({
+              clientId: Redacted.value(clientId),
+              clientSecret: Redacted.value(clientSecret),
+              refreshToken: record.refreshToken,
             });
+            const now = Date.now();
+
+            return {
+              ...record,
+              accessToken: token.access_token,
+              accessTokenExpiresAt: now + token.expires_in * 1_000,
+              refreshToken: token.refresh_token,
+            };
           }),
-      };
+      );
+
+      return makeOpenCodeRunObserverHandler({
+        authStore,
+        linear,
+        opencode,
+        state: {
+          clear: () =>
+            state.storage.delete(runKey).pipe(Effect.flatMap(() => state.storage.deleteAlarm())),
+          get: () => state.storage.get(runKey),
+          put: (run) => state.storage.put(runKey, run),
+          schedule: () => state.storage.setAlarm(Date.now() + alarmDelayMillis),
+        },
+        store,
+      });
     });
 
     return yield* Effect.succeed(make);
@@ -203,6 +360,7 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
     Effect.provide([
       Cloudflare.VpcServiceBindingPolicyLive,
       Cloudflare.VpcServiceBindingLive,
+      Cloudflare.KVNamespaceBindingLive,
       LinearHttpClient.layer,
     ]),
   ),
@@ -212,5 +370,6 @@ export const makeOpenCodeRunObserverService = (
   observers: Cloudflare.DurableObjectNamespace<OpenCodeRunObserver>,
 ): OpenCodeRunObserverServiceShape =>
   OpenCodeRunObserverService.of({
+    cancel: (input) => observers.getByName(input.linearAgentSessionId).cancel(),
     start: (run) => observers.getByName(run.linearAgentSessionId).start(run),
   });

@@ -9,7 +9,7 @@ import type {
 } from "../../src/linear/client/client.ts";
 import type {
   LinearAgentSessionKey,
-  LinearIssueWorktreeKey,
+  LinearPendingInputKey,
 } from "../../src/linear/session/store.ts";
 import type { LinearWebhookPayload } from "../../src/linear/webhook/payload.ts";
 import type { OpenCodeRunRecord } from "../../src/opencode/run-observer.ts";
@@ -36,9 +36,11 @@ const makeKv = () => {
 
   return {
     kv: {
-      get: (key: LinearIssueWorktreeKey | LinearAgentSessionKey) =>
+      delete: (key: LinearAgentSessionKey | LinearPendingInputKey) =>
+        Effect.sync(() => values.delete(key)).pipe(Effect.asVoid),
+      get: (key: LinearAgentSessionKey | LinearPendingInputKey) =>
         Effect.sync(() => values.get(key) ?? null),
-      put: (key: LinearIssueWorktreeKey | LinearAgentSessionKey, value: string) =>
+      put: (key: LinearAgentSessionKey | LinearPendingInputKey, value: string) =>
         Effect.sync(() => values.set(key, value)).pipe(Effect.asVoid),
     },
     values,
@@ -71,6 +73,7 @@ const makeLinear = (
     }>
   >,
 ): LinearHttpClientService => ({
+  addIssueLabel: () => Effect.void,
   createAgentActivity: (input: {
     readonly accessToken: string;
     readonly agentSessionId: string;
@@ -79,10 +82,14 @@ const makeLinear = (
     Ref.update(activities, (items) => [
       ...items,
       { agentSessionId: input.agentSessionId, content: input.content },
-    ]),
+    ]).pipe(Effect.as({ id: "activity-id" })),
   exchangeOAuthCode: () => Effect.die("exchangeOAuthCode is not used by webhook flow tests"),
   fetchViewer: () => Effect.die("fetchViewer is not used by webhook flow tests"),
-  getIssueLabels: () => Effect.succeed([{ name: "repo:opencode-event-bridge", parent: null }]),
+  getIssueAgentSessionIds: () => Effect.succeed(["linear-session-id"]),
+  getIssueLabels: () =>
+    Effect.succeed([{ id: "label-id", name: "repo:opencode-event-bridge", parent: null }]),
+  refreshOAuthToken: () => Effect.die("refreshOAuthToken is not used by webhook flow tests"),
+  updateAgentSessionPlan: () => Effect.void,
   updateAgentSessionExternalUrls: (input) =>
     Ref.update(links, (items) => [
       ...items,
@@ -184,6 +191,10 @@ const responseFor = (request: OpenCodeRequest, messageRequests: number, statusRe
     request.url ===
     "http://127.0.0.1:4096/experimental/worktree?directory=%2FUsers%2Fjackblanc%2Fprojects%2Fopencode-event-bridge"
   ) {
+    if (request.method === "GET") {
+      return Response.json([]);
+    }
+
     return Response.json({ directory: "/tmp/opencode/oeb-1", name: "oeb-1" });
   }
 
@@ -324,6 +335,7 @@ describe("Linear webhook to OpenCode", () => {
           ),
           Layer.succeed(OpenCodeRunObserverService)(
             OpenCodeRunObserverService.of({
+              cancel: () => Effect.void,
               start: (run) => Ref.update(runs, (items) => [...items, run]),
             }),
           ),
@@ -342,9 +354,19 @@ describe("Linear webhook to OpenCode", () => {
           url: "http://127.0.0.1:4096/project",
         },
         {
+          body: null,
+          method: "GET",
+          url: "http://127.0.0.1:4096/experimental/worktree?directory=%2FUsers%2Fjackblanc%2Fprojects%2Fopencode-event-bridge",
+        },
+        {
           body: { name: "oeb-1" },
           method: "POST",
           url: "http://127.0.0.1:4096/experimental/worktree?directory=%2FUsers%2Fjackblanc%2Fprojects%2Fopencode-event-bridge",
+        },
+        {
+          body: null,
+          method: "GET",
+          url: "http://127.0.0.1:4096/session/status?directory=%2Ftmp%2Fopencode%2Foeb-1",
         },
         {
           body: {
@@ -355,6 +377,7 @@ describe("Linear webhook to OpenCode", () => {
         },
         {
           body: {
+            agent: "build",
             parts: [{ text: "start", type: "text" }],
           },
           method: "POST",
@@ -369,11 +392,11 @@ describe("Linear webhook to OpenCode", () => {
       ]);
       expect(observedRuns).toEqual([
         {
-          accessToken: "linear-access-token",
           linearAgentSessionId: "linear-session-id",
-          linearIssueIdentifier: "OEB-1",
           opencodeSessionId: "opencode-session-id",
-          opencodeWorkspaceDirectory: "/tmp/opencode/oeb-1",
+          organizationId: "org-id",
+          projectDirectory: "/Users/jackblanc/projects/opencode-event-bridge",
+          workspaceDirectory: "/tmp/opencode/oeb-1",
         },
       ]);
       expect(observedLinks).toEqual([
@@ -382,7 +405,7 @@ describe("Linear webhook to OpenCode", () => {
           externalUrls: [
             {
               label: "OpenCode",
-              url: "http://localhost:4096/L1VzZXJzL2phY2tibGFuYy9wcm9qZWN0cy9vcGVuY29kZS1ldmVudC1icmlkZ2U/session/opencode-session-id",
+              url: "http://localhost:4096/L3RtcC9vcGVuY29kZS9vZWItMQ/session/opencode-session-id",
             },
           ],
         },
