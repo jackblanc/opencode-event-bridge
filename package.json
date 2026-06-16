@@ -37,11 +37,5 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
   },
-  "packageManager": "pnpm@10.23.0",
-  "pnpm": {
-    "patchedDependencies": {
-      "alchemy@2.0.0-beta.44": "patches/alchemy@2.0.0-beta.44.patch",
-      "@distilled.cloud/cloudflare@0.21.5": "patches/@distilled.cloud__cloudflare@0.21.5.patch"
-    }
-  }
+  "packageManager": "pnpm@10.23.0"
 }
