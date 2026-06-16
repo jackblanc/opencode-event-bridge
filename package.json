@@ -1,6 +1,7 @@
 {
   "name": "opencode-event-bridge",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "module": "alchemy.run.ts",
   "scripts": {
