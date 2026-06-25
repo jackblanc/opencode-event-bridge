@@ -6,6 +6,9 @@ on:
     branches:
       - master
 
+permissions:
+  contents: read
+
 env:
   STAGE: >-
     ${{ github.event_name == 'pull_request'
@@ -81,6 +84,7 @@ jobs:
   test_e2e:
     name: E2E Test
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
@@ -101,6 +105,7 @@ jobs:
     name: Deploy Prod
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    environment: production
     needs:
       - typecheck
       - lint

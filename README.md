@@ -18,6 +18,7 @@ Cloudflare owns ingress, queueing, OAuth/session KV, and private connectivity to
 - Cloudflare API token that can deploy those resources.
 - `cloudflared` installed on the machine running OpenCode.
 - Linear workspace admin access.
+- Linear Agents API access. The Linear Agents API is in Developer Preview and may change.
 - OpenCode installed locally.
 - `pnpm`.
 
@@ -77,6 +78,11 @@ pnpm install
 
 ## Deploy
 
+Deployment options:
+
+- Clone this repo, set `.env`, and deploy from your machine with `pnpm run deploy:dev` or `pnpm run deploy:prod`.
+- Fork this repo if you want GitHub Actions deploys. Set repository secrets manually, or run the GitHub provisioning stack below from a trusted admin profile.
+
 Deploy dev:
 
 ```bash
@@ -102,6 +108,8 @@ The stack creates:
 - OpenCode Tunnel
 - OpenCode VPC service
 - Run Observer Durable Object
+
+Worker logs can include Linear webhook payloads, including issue descriptions, comments, prompts, guidance, and previous comments. Deploy into an account whose logs you treat as sensitive.
 
 ## Run OpenCode
 
@@ -188,6 +196,8 @@ Infra deploy test:
 pnpm run test:e2e
 ```
 
+This deploys real Cloudflare resources using the current environment and stage. CI tears down after the test; local runs keep resources/state for inspection and cleanup.
+
 Manual smoke:
 
 ```bash
@@ -202,7 +212,7 @@ Then trigger a Linear agent session and confirm Linear receives:
 
 ## CI Secrets
 
-Provision GitHub secrets with an admin Cloudflare profile:
+For fork-based deploys, set these repository secrets manually or provision them with an admin Cloudflare profile:
 
 ```bash
 pnpm run provision:github
@@ -215,6 +225,10 @@ This creates a least-scoped Cloudflare API token for CI and stores:
 - `LINEAR_OAUTH_CLIENT_ID`
 - `LINEAR_OAUTH_CLIENT_SECRET`
 - `LINEAR_WEBHOOK_SECRET`
+
+GitHub does not pass these secrets to public fork PRs. The e2e deploy test is skipped for fork PRs. Do not switch CI to `pull_request_target`.
+
+Use a GitHub `production` environment with required approval for production deploys.
 
 ## Troubleshooting
 
