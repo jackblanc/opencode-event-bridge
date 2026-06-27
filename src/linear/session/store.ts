@@ -113,7 +113,7 @@ export class LinearSessionStore extends Context.Service<
 export class LinearSessionStoreError extends Schema.TaggedErrorClass<LinearSessionStoreError>()(
   "LinearSessionStoreError",
   {
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
     key: Schema.optional(Schema.String),
     reason: Schema.Literals(["InvalidRecord", "MissingAgentSession", "StoreFailure"]),
   },

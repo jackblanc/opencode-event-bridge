@@ -16,5 +16,5 @@ export default Alchemy.Stack(
     yield* LinearWebhookProcessor;
 
     return receiver.url;
-  }).pipe(Effect.provide(Cloudflare.VpcServiceBindingPolicyLive)),
+  }),
 );

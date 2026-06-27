@@ -3,7 +3,7 @@ import { Schema } from "effect";
 export class LinearSessionProcessorError extends Schema.TaggedErrorClass<LinearSessionProcessorError>()(
   "LinearSessionProcessorError",
   {
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
     reason: Schema.Literals([
       "AuthFailure",
       "LinearFailure",

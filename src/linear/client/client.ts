@@ -628,7 +628,7 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
 export class LinearHttpClientError extends Schema.TaggedErrorClass<LinearHttpClientError>()(
   "LinearHttpClientError",
   {
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     reason: Schema.Literals([
       "HttpError",
       "InvalidGraphqlRequest",

@@ -27,7 +27,7 @@ export class LinearOrgAuthStore extends Context.Service<
 export class LinearOrgAuthStoreError extends Schema.TaggedErrorClass<LinearOrgAuthStoreError>()(
   "LinearOrgAuthStoreError",
   {
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
     key: Schema.optional(Schema.String),
     reason: Schema.Literals([
       "InvalidRecord",

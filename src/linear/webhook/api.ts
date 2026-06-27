@@ -7,7 +7,7 @@ import * as HttpApiSchema from "effect/unstable/httpapi/HttpApiSchema";
 export class LinearWebhookBadRequest extends Schema.TaggedErrorClass<LinearWebhookBadRequest>()(
   "LinearWebhookBadRequest",
   {
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
     reason: Schema.Literals(["InvalidPayload", "EventMismatch"]),
   },
   { httpApiStatus: 400 },
@@ -16,7 +16,7 @@ export class LinearWebhookBadRequest extends Schema.TaggedErrorClass<LinearWebho
 export class LinearWebhookUnauthorized extends Schema.TaggedErrorClass<LinearWebhookUnauthorized>()(
   "LinearWebhookUnauthorized",
   {
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
     reason: Schema.Literals(["StaleTimestamp", "InvalidSignature"]),
   },
   { httpApiStatus: 401 },
@@ -33,7 +33,7 @@ export class LinearOAuthBadRequest extends Schema.TaggedErrorClass<LinearOAuthBa
 export class LinearOAuthUpstreamError extends Schema.TaggedErrorClass<LinearOAuthUpstreamError>()(
   "LinearOAuthUpstreamError",
   {
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
     reason: Schema.Literals([
       "InvalidCallbackUrl",
       "LinearRequestFailed",

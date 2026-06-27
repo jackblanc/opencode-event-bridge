@@ -1,8 +1,8 @@
 import * as BrowserCrypto from "@effect/platform-browser/BrowserCrypto";
-import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stack } from "alchemy/Stack";
 import * as Cause from "effect/Cause";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -38,23 +38,22 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
   })),
   Effect.gen(function* () {
     const queueResource = yield* LinearWebhookQueue;
-    const queue = yield* Cloudflare.QueueBinding.bind(queueResource);
+    const queue = yield* Cloudflare.Queues.WriteQueue(queueResource);
     const oauthStateResource = yield* LinearOAuthStateStore;
-    const oauthState = yield* Cloudflare.KVNamespace.bind(oauthStateResource);
+    const oauthState = yield* Cloudflare.KV.ReadWriteNamespace(oauthStateResource);
     const orgAuthResource = yield* LinearOrgAuthStore;
-    const orgAuth = yield* Cloudflare.KVNamespace.bind(orgAuthResource);
+    const orgAuth = yield* Cloudflare.KV.ReadWriteNamespace(orgAuthResource);
     const linear = yield* LinearHttpClient;
-    const oauthClientId = yield* Alchemy.Secret("LINEAR_OAUTH_CLIENT_ID");
-    const oauthClientSecret = yield* Alchemy.Secret("LINEAR_OAUTH_CLIENT_SECRET");
-    const webhookSecret = yield* Alchemy.Secret("LINEAR_WEBHOOK_SECRET");
+    const oauthClientId = yield* Config.redacted("LINEAR_OAUTH_CLIENT_ID");
+    const oauthClientSecret = yield* Config.redacted("LINEAR_OAUTH_CLIENT_SECRET");
+    const webhookSecret = yield* Config.redacted("LINEAR_WEBHOOK_SECRET");
 
     const group = HttpApiBuilder.group(LinearWebhookApi, "LinearWebhook", (handlers) =>
       handlers
         .handle("authorizeLinearOAuth", ({ request }) =>
           Effect.gen(function* () {
-            const clientId = yield* oauthClientId;
             const url = yield* makeLinearOAuthAuthorizeUrl({
-              clientId: Redacted.value(clientId),
+              clientId: Redacted.value(oauthClientId),
               request,
               state: oauthState,
             });
@@ -64,11 +63,9 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
         )
         .handle("completeLinearOAuth", ({ request, query }) =>
           Effect.gen(function* () {
-            const clientId = yield* oauthClientId;
-            const clientSecret = yield* oauthClientSecret;
             yield* completeLinearOAuthInstall({
-              clientId: Redacted.value(clientId),
-              clientSecret: Redacted.value(clientSecret),
+              clientId: Redacted.value(oauthClientId),
+              clientSecret: Redacted.value(oauthClientSecret),
               code: query.code,
               linear,
               orgAuth,
@@ -84,14 +81,13 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
         )
         .handleRaw("receiveLinearWebhook", ({ request, headers }) =>
           Effect.gen(function* () {
-            const linearWebhookSecret = yield* webhookSecret;
             const rawBody = yield* request.arrayBuffer.pipe(Effect.orDie);
             return yield* receiveLinearWebhook({
               event: headers["linear-event"],
               queue,
               rawBody,
               signature: headers["linear-signature"],
-              webhookSecret: Redacted.value(linearWebhookSecret),
+              webhookSecret: Redacted.value(webhookSecret),
             }).pipe(
               Effect.tapCause((cause) =>
                 Effect.logError("linear webhook ingress failed", {
@@ -112,13 +108,29 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
         Layer.provide(group),
         Layer.provide([Etag.layer, HttpPlatformStub, Path.layer]),
         HttpRouter.toHttpEffect,
-        Effect.map((handler) => handler.pipe(Effect.provide(BrowserCrypto.layer))),
+        Effect.map((handler) =>
+          handler.pipe(
+            Effect.provide(BrowserCrypto.layer),
+            Effect.catchCause((cause) =>
+              Effect.logError("linear webhook request failed", {
+                cause: Cause.pretty(cause),
+              }).pipe(
+                Effect.as(
+                  HttpServerResponse.text("Internal Server Error", {
+                    status: 500,
+                    statusText: "Internal Server Error",
+                  }),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     };
   }).pipe(
     Effect.provide([
-      Cloudflare.KVNamespaceBindingLive,
-      Cloudflare.QueueBindingLive,
+      Cloudflare.KV.ReadWriteNamespaceBinding,
+      Cloudflare.Queues.WriteQueueBinding,
       LinearHttpClient.layer,
     ]),
   ),

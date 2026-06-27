@@ -1,3 +1,3 @@
 import * as Cloudflare from "alchemy/Cloudflare";
 
-export const LinearSessionStoreKv = Cloudflare.KVNamespace("LinearSessionStore");
+export const LinearSessionStoreKv = Cloudflare.KV.Namespace("LinearSessionStore");

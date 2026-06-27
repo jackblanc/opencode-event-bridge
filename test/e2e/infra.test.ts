@@ -8,8 +8,6 @@ import Stack from "../../alchemy.run.ts";
 const stage = process.env["STAGE"] ?? "test";
 
 const { afterAll, beforeAll, deploy, destroy, test } = Test.make({
-  // Alchemy's Vitest helper defaults its provider generic to any.
-  // oxlint-disable-next-line typescript/no-unsafe-assignment
   providers: Cloudflare.providers(),
   state: Cloudflare.state(),
   stage,

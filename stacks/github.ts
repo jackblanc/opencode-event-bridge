@@ -17,7 +17,6 @@ const env = (name: string) =>
 export default Alchemy.Stack(
   "GitHub",
   {
-    // oxlint-disable-next-line typescript/no-unsafe-assignment
     providers: GitHub.providers().pipe(Layer.provideMerge(Cloudflare.providers())),
     state: Cloudflare.state(),
   },
@@ -26,7 +25,7 @@ export default Alchemy.Stack(
     const repository = process.env["GITHUB_REPOSITORY_NAME"] ?? "opencode-event-bridge";
     const accountId = yield* env("CLOUDFLARE_ACCOUNT_ID");
 
-    const token = yield* Cloudflare.AccountApiToken("CIToken", {
+    const token = yield* Cloudflare.ApiToken.AccountApiToken("CIToken", {
       accountId,
       policies: [
         {

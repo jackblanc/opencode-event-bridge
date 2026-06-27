@@ -2,6 +2,7 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Schema } from "effect";
 import * as Cause from "effect/Cause";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -235,24 +236,26 @@ export const makeOpenCodeRunObserverHandler = (input: {
   };
 };
 
-export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespace<OpenCodeRunObserver>()(
+export default class OpenCodeRunObserver extends Cloudflare.DurableObject<OpenCodeRunObserver>()(
   "OpenCodeRunObserver",
   Effect.gen(function* () {
     const opencodeService = yield* OpenCodeVpcService.pipe(Effect.orDie);
-    const bindVpcService = yield* Cloudflare.VpcServiceBinding;
+    const bindVpcService = yield* Cloudflare.VpcService.VpcServiceBinding;
     const opencodeBinding = yield* bindVpcService(opencodeService);
     const sessionStoreResource = yield* LinearSessionStoreKv;
-    const sessionStore = yield* Cloudflare.KVNamespace.bind(sessionStoreResource);
+    const sessionStore = yield* Cloudflare.KV.ReadWriteNamespace(sessionStoreResource);
     const orgAuthResource = yield* LinearOrgAuthStoreResource;
-    const orgAuthStore = yield* Cloudflare.KVNamespace.bind(orgAuthResource);
-    const oauthClientId = yield* Alchemy.Secret("LINEAR_OAUTH_CLIENT_ID");
-    const oauthClientSecret = yield* Alchemy.Secret("LINEAR_OAUTH_CLIENT_SECRET");
+    const orgAuthStore = yield* Cloudflare.KV.ReadWriteNamespace(orgAuthResource);
+    const oauthClientId = yield* Config.redacted("LINEAR_OAUTH_CLIENT_ID").pipe(Effect.orDie);
+    const oauthClientSecret = yield* Config.redacted("LINEAR_OAUTH_CLIENT_SECRET").pipe(
+      Effect.orDie,
+    );
     const linear = yield* LinearHttpClient;
-    const ctx = yield* Alchemy.RuntimeContext;
+    const env = yield* Cloudflare.WorkerEnvironment;
 
     const make = Effect.gen(function* () {
       const state = yield* Cloudflare.DurableObjectState;
-      const env = yield* Cloudflare.WorkerEnvironment;
+      const ctx = yield* Alchemy.RuntimeContext;
 
       const fetchOpenCode = async (input: string | URL | Request, init?: RequestInit) => {
         const request = input instanceof Request ? input : new Request(input, init);
@@ -322,11 +325,9 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
         },
         (record) =>
           Effect.gen(function* () {
-            const clientId = yield* oauthClientId;
-            const clientSecret = yield* oauthClientSecret;
             const token = yield* linear.refreshOAuthToken({
-              clientId: Redacted.value(clientId),
-              clientSecret: Redacted.value(clientSecret),
+              clientId: Redacted.value(oauthClientId),
+              clientSecret: Redacted.value(oauthClientSecret),
               refreshToken: record.refreshToken,
             });
             const now = Date.now();
@@ -346,10 +347,18 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
         opencode,
         state: {
           clear: () =>
-            state.storage.delete(runKey).pipe(Effect.flatMap(() => state.storage.deleteAlarm())),
-          get: () => state.storage.get(runKey),
-          put: (run) => state.storage.put(runKey, run),
-          schedule: () => state.storage.setAlarm(Date.now() + alarmDelayMillis),
+            state.storage.delete(runKey).pipe(
+              Effect.flatMap(() => state.storage.deleteAlarm()),
+              Effect.provideService(Alchemy.RuntimeContext, ctx),
+            ),
+          get: () =>
+            state.storage.get(runKey).pipe(Effect.provideService(Alchemy.RuntimeContext, ctx)),
+          put: (run) =>
+            state.storage.put(runKey, run).pipe(Effect.provideService(Alchemy.RuntimeContext, ctx)),
+          schedule: () =>
+            state.storage
+              .setAlarm(Date.now() + alarmDelayMillis)
+              .pipe(Effect.provideService(Alchemy.RuntimeContext, ctx)),
         },
         store,
       });
@@ -358,16 +367,15 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObjectNamespa
     return yield* Effect.succeed(make);
   }).pipe(
     Effect.provide([
-      Cloudflare.VpcServiceBindingPolicyLive,
-      Cloudflare.VpcServiceBindingLive,
-      Cloudflare.KVNamespaceBindingLive,
+      Cloudflare.VpcService.VpcServiceBindingLive,
+      Cloudflare.KV.ReadWriteNamespaceBinding,
       LinearHttpClient.layer,
     ]),
   ),
 ) {}
 
 export const makeOpenCodeRunObserverService = (
-  observers: Cloudflare.DurableObjectNamespace<OpenCodeRunObserver>,
+  observers: Cloudflare.DurableObject<OpenCodeRunObserver>,
 ): OpenCodeRunObserverServiceShape =>
   OpenCodeRunObserverService.of({
     cancel: (input) => observers.getByName(input.linearAgentSessionId).cancel(),
