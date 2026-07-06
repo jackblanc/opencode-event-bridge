@@ -20,23 +20,23 @@
     "check": "pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run knip && pnpm run test:unit"
   },
   "dependencies": {
-    "@effect/platform-browser": "4.0.0-beta.90",
-    "@effect/platform-node": "4.0.0-beta.90",
-    "@opencode-ai/sdk": "^1.17.11",
+    "@effect/platform-browser": "4.0.0-beta.93",
+    "@effect/platform-node": "4.0.0-beta.93",
+    "@opencode-ai/sdk": "^1.17.13",
     "alchemy": "2.0.0-beta.59",
-    "effect": "4.0.0-beta.90"
+    "effect": "4.0.0-beta.93"
   },
   "devDependencies": {
-    "@effect/language-service": "^0.86.2",
-    "@effect/vitest": "4.0.0-beta.90",
-    "@types/node": "^26.0.1",
-    "knip": "^6.22.0",
+    "@effect/language-service": "^0.86.4",
+    "@effect/vitest": "4.0.0-beta.93",
+    "@types/node": "^26.1.0",
+    "knip": "^6.24.0",
     "lefthook": "^2.1.9",
-    "oxfmt": "^0.56.0",
-    "oxlint": "^1.71.0",
-    "oxlint-tsgolint": "^0.23.0",
+    "oxfmt": "^0.57.0",
+    "oxlint": "^1.72.0",
+    "oxlint-tsgolint": "^0.24.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.7.0"
 }
