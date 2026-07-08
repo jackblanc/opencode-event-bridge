@@ -4,7 +4,11 @@ import * as Effect from "effect/Effect";
 import type { LinearHttpClientError } from "../client/client.ts";
 import type { LinearOAuthTokenResponse, LinearViewerGraphqlResponse } from "./schema.ts";
 
-import { LinearOAuthBadRequest, LinearOAuthUpstreamError } from "../webhook/api.ts";
+import {
+  LinearOAuthBadRequest,
+  LinearOAuthForbidden,
+  LinearOAuthUpstreamError,
+} from "../webhook/api.ts";
 import { LinearOrgAuthRecord } from "./schema.ts";
 
 const linearOAuthAuthorizeUrl = "https://linear.app/oauth/authorize";
@@ -48,6 +52,7 @@ export const makeLinearOAuthAuthorizeUrl = <R>(input: {
   });
 
 export const completeLinearOAuthInstall = <OAuthR, OrgAuthR>(input: {
+  readonly allowedOrganizationId: string;
   readonly clientId: string;
   readonly clientSecret: string;
   readonly code: string;
@@ -96,6 +101,10 @@ export const completeLinearOAuthInstall = <OAuthR, OrgAuthR>(input: {
           (cause) => new LinearOAuthUpstreamError({ cause, reason: "InvalidViewerResponse" }),
         ),
       );
+    if (viewer.data.viewer.organization.id !== input.allowedOrganizationId) {
+      return yield* new LinearOAuthForbidden({ reason: "OrganizationNotAllowed" });
+    }
+
     const now = Date.now();
     const record = {
       accessToken: token.access_token,

@@ -75,8 +75,22 @@ const ensureWorktree = (input: {
       );
   });
 
-export const processLinearWebhook = (payload: LinearWebhookPayload) =>
+export const processLinearWebhook = (message: {
+  readonly allowedOrganizationId: string;
+  readonly payload: LinearWebhookPayload;
+}) =>
   Effect.gen(function* () {
+    const payload = message.payload;
+    if (payload.organizationId !== message.allowedOrganizationId) {
+      yield* Effect.logWarning("linear webhook rejected for unauthorized organization", {
+        action: payload.action,
+        organizationId: payload.organizationId,
+        type: payload.type,
+        webhookId: payload.webhookId,
+      });
+      return "organization-not-allowed";
+    }
+
     const authStore = yield* LinearOrgAuthStore;
     const orgAuth = yield* authStore.getOrgAuth({ organizationId: payload.organizationId }).pipe(
       Effect.matchEffect({

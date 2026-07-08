@@ -51,6 +51,7 @@ export default Alchemy.Stack(
       LINEAR_OAUTH_CLIENT_ID: Redacted.make(yield* env("LINEAR_OAUTH_CLIENT_ID")),
       LINEAR_OAUTH_CLIENT_SECRET: Redacted.make(yield* env("LINEAR_OAUTH_CLIENT_SECRET")),
       LINEAR_WEBHOOK_SECRET: Redacted.make(yield* env("LINEAR_WEBHOOK_SECRET")),
+      LINEAR_ALLOWED_ORGANIZATION_ID: Redacted.make(yield* env("LINEAR_ALLOWED_ORGANIZATION_ID")),
     };
 
     yield* Effect.all(

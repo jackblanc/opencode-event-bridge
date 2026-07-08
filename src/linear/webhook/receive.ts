@@ -26,6 +26,7 @@ const decodeAndValidateLinearWebhookPayload = (rawBody: ArrayBuffer, linearEvent
   });
 
 export const receiveLinearWebhook = <R>(input: {
+  readonly allowedOrganizationId: string;
   readonly event: string;
   readonly queue: { send(payload: LinearWebhookPayload): Effect.Effect<void, unknown, R> };
   readonly rawBody: ArrayBuffer;
@@ -40,6 +41,10 @@ export const receiveLinearWebhook = <R>(input: {
     }
 
     const payload = yield* decodeAndValidateLinearWebhookPayload(input.rawBody, input.event);
+    if (payload.organizationId !== input.allowedOrganizationId) {
+      return yield* new LinearWebhookUnauthorized({ reason: "OrganizationNotAllowed" });
+    }
+
     yield* Effect.log("linear webhook payload decoded", {
       action: payload.action,
       bodyBytes: input.rawBody.byteLength,

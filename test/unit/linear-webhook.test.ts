@@ -67,6 +67,7 @@ describe("receiveLinearWebhook", () => {
 
     const result = await Effect.runPromise(
       receiveLinearWebhook({
+        allowedOrganizationId: "org-id",
         event: "Issue",
         queue: {
           send: (message) => Effect.sync(() => sent.push(message)).pipe(Effect.asVoid),
@@ -88,6 +89,7 @@ describe("receiveLinearWebhook", () => {
 
     const result = await Effect.runPromise(
       receiveLinearWebhook({
+        allowedOrganizationId: "org-id",
         event: "Reaction",
         queue: {
           send: (message) => Effect.sync(() => sent.push(message)).pipe(Effect.asVoid),
@@ -107,6 +109,7 @@ describe("receiveLinearWebhook", () => {
 
     const error = await Effect.runPromise(
       receiveLinearWebhook({
+        allowedOrganizationId: "org-id",
         event: "Issue",
         queue: { send: () => Effect.void },
         rawBody,
@@ -119,6 +122,31 @@ describe("receiveLinearWebhook", () => {
     expect(error.reason).toBe("InvalidSignature");
   });
 
+  it("rejects signed webhook payloads from other organizations", async () => {
+    vi.setSystemTime(new Date("2026-05-14T00:00:00.000Z"));
+    const payload: LinearWebhookPayload = { ...issuePayload(), organizationId: "other-org-id" };
+    const rawBody = bodyOf(payload);
+    const signature = await Effect.runPromise(sign(rawBody));
+    const sent: Array<LinearWebhookPayload> = [];
+
+    const error = await Effect.runPromise(
+      receiveLinearWebhook({
+        allowedOrganizationId: "org-id",
+        event: "Issue",
+        queue: {
+          send: (message) => Effect.sync(() => sent.push(message)).pipe(Effect.asVoid),
+        },
+        rawBody,
+        signature,
+        webhookSecret: secret,
+      }).pipe(Effect.flip),
+    );
+
+    expect(error).toBeInstanceOf(LinearWebhookUnauthorized);
+    expect(error.reason).toBe("OrganizationNotAllowed");
+    expect(sent).toEqual([]);
+  });
+
   it("preserves invalid payload decode cause", async () => {
     const bytes = new TextEncoder().encode(JSON.stringify({ type: "Issue" }));
     const rawBody = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -126,6 +154,7 @@ describe("receiveLinearWebhook", () => {
 
     const error = await Effect.runPromise(
       receiveLinearWebhook({
+        allowedOrganizationId: "org-id",
         event: "Issue",
         queue: { send: () => Effect.void },
         rawBody,
@@ -145,6 +174,7 @@ describe("receiveLinearWebhook", () => {
 
     const error = await Effect.runPromise(
       receiveLinearWebhook({
+        allowedOrganizationId: "org-id",
         event: "AgentSessionEvent",
         queue: { send: () => Effect.void },
         rawBody,
@@ -166,6 +196,7 @@ describe("receiveLinearWebhook", () => {
 
     const error = await Effect.runPromise(
       receiveLinearWebhook({
+        allowedOrganizationId: "org-id",
         event: "Issue",
         queue: { send: () => Effect.void },
         rawBody,

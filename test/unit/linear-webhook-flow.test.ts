@@ -31,6 +31,9 @@ type OpenCodeRequest = {
   readonly url: string;
 };
 
+const processAllowedWebhook = (payload: LinearWebhookPayload) =>
+  processLinearWebhook({ allowedOrganizationId: "org-id", payload });
+
 const makeKv = () => {
   const values = new Map<string, string>();
 
@@ -315,6 +318,7 @@ describe("Linear webhook to OpenCode", () => {
       const store = makeKv();
 
       yield* receiveLinearWebhook({
+        allowedOrganizationId: "org-id",
         event: "AgentSessionEvent",
         queue: {
           send: (message) => Ref.update(queued, (items) => [...items, message]),
@@ -325,7 +329,9 @@ describe("Linear webhook to OpenCode", () => {
       });
 
       const messages = yield* Ref.get(queued);
-      yield* Effect.forEach(messages, processLinearWebhook, { discard: true }).pipe(
+      yield* Effect.forEach(messages, (message) => processAllowedWebhook(message), {
+        discard: true,
+      }).pipe(
         Effect.provide([
           Layer.succeed(LinearHttpClient)(makeLinear(activities, links)),
           Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),

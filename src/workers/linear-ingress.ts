@@ -47,6 +47,7 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
     const oauthClientId = yield* Config.redacted("LINEAR_OAUTH_CLIENT_ID");
     const oauthClientSecret = yield* Config.redacted("LINEAR_OAUTH_CLIENT_SECRET");
     const webhookSecret = yield* Config.redacted("LINEAR_WEBHOOK_SECRET");
+    const allowedOrganizationId = yield* Config.string("LINEAR_ALLOWED_ORGANIZATION_ID");
 
     const group = HttpApiBuilder.group(LinearWebhookApi, "LinearWebhook", (handlers) =>
       handlers
@@ -64,6 +65,7 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
         .handle("completeLinearOAuth", ({ request, query }) =>
           Effect.gen(function* () {
             yield* completeLinearOAuthInstall({
+              allowedOrganizationId,
               clientId: Redacted.value(oauthClientId),
               clientSecret: Redacted.value(oauthClientSecret),
               code: query.code,
@@ -83,6 +85,7 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
           Effect.gen(function* () {
             const rawBody = yield* request.arrayBuffer.pipe(Effect.orDie);
             return yield* receiveLinearWebhook({
+              allowedOrganizationId,
               event: headers["linear-event"],
               queue,
               rawBody,

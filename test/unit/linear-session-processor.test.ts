@@ -42,6 +42,9 @@ const orgAuth = {
   refreshToken: "refresh-token",
 };
 
+const processAllowedWebhook = (payload: LinearWebhookPayload) =>
+  processLinearWebhook({ allowedOrganizationId: "org-id", payload });
+
 const locator = {
   linearAgentSessionId: "linear-session-id",
   opencodeSessionId: "opencode-session-id",
@@ -353,6 +356,34 @@ describe("LinearSessionStore", () => {
 });
 
 describe("processLinearWebhook", () => {
+  it("rejects unauthorized organizations before reading auth", async () => {
+    const store = makeKv();
+    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+    const activities: Array<ActivityRecord> = [];
+    const base = createdPayload();
+    const payload: LinearWebhookPayload = {
+      ...base,
+      agentSession: { ...base.agentSession, organizationId: "other-org-id" },
+      organizationId: "other-org-id",
+    };
+
+    const result = await Effect.runPromise(
+      processAllowedWebhook(payload).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ prompts }),
+            store,
+          }),
+        ),
+      ),
+    );
+
+    expect(result).toBe("organization-not-allowed");
+    expect(prompts).toEqual([]);
+    expect(activities).toEqual([]);
+  });
+
   it("starts a labelled issue and stores a session locator", async () => {
     const store = makeKv();
     const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
@@ -362,7 +393,7 @@ describe("processLinearWebhook", () => {
     }> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(createdPayload()).pipe(
+      processAllowedWebhook(createdPayload()).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -390,7 +421,7 @@ describe("processLinearWebhook", () => {
     });
 
     await Effect.runPromise(
-      processLinearWebhook(createdPayload()).pipe(
+      processAllowedWebhook(createdPayload()).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities, labels: [] }),
@@ -425,7 +456,7 @@ describe("processLinearWebhook", () => {
         const activities: Array<ActivityRecord> = [];
 
         await Effect.runPromise(
-          processLinearWebhook(createdPayload()).pipe(
+          processAllowedWebhook(createdPayload()).pipe(
             Effect.provide(
               provide({
                 linear: makeLinear({ activities, labels: group }),
@@ -447,7 +478,7 @@ describe("processLinearWebhook", () => {
     const activities: Array<ActivityRecord> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(createdPayload()).pipe(
+      processAllowedWebhook(createdPayload()).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -493,7 +524,7 @@ describe("processLinearWebhook", () => {
     }> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(promptedPayload("continue")).pipe(
+      processAllowedWebhook(promptedPayload("continue")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities, labels: [] }),
@@ -529,7 +560,7 @@ describe("processLinearWebhook", () => {
     const activities: Array<ActivityRecord> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(promptedPayload("opencode-event-bridge")).pipe(
+      processAllowedWebhook(promptedPayload("opencode-event-bridge")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities, labelWrites, labels: [] }),
@@ -553,7 +584,7 @@ describe("processLinearWebhook", () => {
     const activities: Array<ActivityRecord> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(promptedPayload("opencode-event-bridge")).pipe(
+      processAllowedWebhook(promptedPayload("opencode-event-bridge")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities, labelWriteFailure: true, labels: [] }),
@@ -577,7 +608,7 @@ describe("processLinearWebhook", () => {
     const activities: Array<ActivityRecord> = [];
 
     const result = await Effect.runPromise(
-      processLinearWebhook(promptedPayload("opencode-event-bridge")).pipe(
+      processAllowedWebhook(promptedPayload("opencode-event-bridge")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({
@@ -639,7 +670,7 @@ describe("processLinearWebhook", () => {
     }> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(promptedPayload("Approve Always")).pipe(
+      processAllowedWebhook(promptedPayload("Approve Always")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -678,7 +709,7 @@ describe("processLinearWebhook", () => {
     const activities: Array<ActivityRecord> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(promptedPayload("continue")).pipe(
+      processAllowedWebhook(promptedPayload("continue")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -759,7 +790,7 @@ describe("processLinearWebhook", () => {
     const activities: Array<ActivityRecord> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(promptedPayload("Red")).pipe(
+      processAllowedWebhook(promptedPayload("Red")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -778,7 +809,7 @@ describe("processLinearWebhook", () => {
     });
 
     await Effect.runPromise(
-      processLinearWebhook(promptedPayload("Dog")).pipe(
+      processAllowedWebhook(promptedPayload("Dog")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -845,7 +876,7 @@ describe("processLinearWebhook", () => {
     const activities: Array<ActivityRecord> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(promptedPayload("red, blue")).pipe(
+      processAllowedWebhook(promptedPayload("red, blue")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -874,7 +905,7 @@ describe("processLinearWebhook", () => {
     }> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(stopPayload()).pipe(
+      processAllowedWebhook(stopPayload()).pipe(
         Effect.provide(
           provide({
             cancels,
@@ -906,7 +937,7 @@ describe("processLinearWebhook", () => {
     }> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(issuePayload()).pipe(
+      processAllowedWebhook(issuePayload()).pipe(
         Effect.provide(
           provide({
             cancels,
@@ -936,7 +967,7 @@ describe("processLinearWebhook", () => {
     const activities: Array<ActivityRecord> = [];
 
     const error = await Effect.runPromise(
-      processLinearWebhook(issuePayload()).pipe(
+      processAllowedWebhook(issuePayload()).pipe(
         Effect.provide(
           provide({
             cancels,
@@ -982,7 +1013,7 @@ describe("processLinearWebhook", () => {
     const activities: Array<ActivityRecord> = [];
 
     await Effect.runPromise(
-      processLinearWebhook(issuePayload()).pipe(
+      processAllowedWebhook(issuePayload()).pipe(
         Effect.provide(
           provide({
             cancels,

@@ -17,7 +17,7 @@ export class LinearWebhookUnauthorized extends Schema.TaggedErrorClass<LinearWeb
   "LinearWebhookUnauthorized",
   {
     cause: Schema.optional(Schema.Defect()),
-    reason: Schema.Literals(["StaleTimestamp", "InvalidSignature"]),
+    reason: Schema.Literals(["StaleTimestamp", "InvalidSignature", "OrganizationNotAllowed"]),
   },
   { httpApiStatus: 401 },
 ) {}
@@ -44,6 +44,14 @@ export class LinearOAuthUpstreamError extends Schema.TaggedErrorClass<LinearOAut
   { httpApiStatus: 502 },
 ) {}
 
+export class LinearOAuthForbidden extends Schema.TaggedErrorClass<LinearOAuthForbidden>()(
+  "LinearOAuthForbidden",
+  {
+    reason: Schema.Literal("OrganizationNotAllowed"),
+  },
+  { httpApiStatus: 403 },
+) {}
+
 const LinearWebhookReceiverResult = Schema.Struct({
   queued: Schema.Boolean,
 }).pipe(HttpApiSchema.status("OK"));
@@ -67,7 +75,7 @@ const completeLinearOAuth = HttpApiEndpoint.get("completeLinearOAuth", "/api/oau
     code: Schema.String,
     state: Schema.String,
   },
-  error: [LinearOAuthBadRequest, LinearOAuthUpstreamError],
+  error: [LinearOAuthBadRequest, LinearOAuthForbidden, LinearOAuthUpstreamError],
 });
 
 class LinearWebhookGroup extends HttpApiGroup.make("LinearWebhook")

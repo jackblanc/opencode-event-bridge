@@ -61,7 +61,10 @@ CLOUDFLARE_API_TOKEN=
 LINEAR_OAUTH_CLIENT_ID=
 LINEAR_OAUTH_CLIENT_SECRET=
 LINEAR_WEBHOOK_SECRET=
+LINEAR_ALLOWED_ORGANIZATION_ID=
 ```
+
+Only this Linear organization can install or use the deployed bridge.
 
 Optional GitHub secret provisioning:
 
@@ -225,6 +228,7 @@ This creates a least-scoped Cloudflare API token for CI and stores:
 - `LINEAR_OAUTH_CLIENT_ID`
 - `LINEAR_OAUTH_CLIENT_SECRET`
 - `LINEAR_WEBHOOK_SECRET`
+- `LINEAR_ALLOWED_ORGANIZATION_ID`
 
 GitHub does not pass these secrets to public fork PRs. The e2e deploy test is skipped for fork PRs. Do not switch CI to `pull_request_target`.
 
