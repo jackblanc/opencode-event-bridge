@@ -57,7 +57,7 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
     const orgAuthStore = yield* Cloudflare.KV.ReadWriteNamespace(orgAuthResource);
     const oauthClientId = yield* Config.redacted("LINEAR_OAUTH_CLIENT_ID");
     const oauthClientSecret = yield* Config.redacted("LINEAR_OAUTH_CLIENT_SECRET");
-    const allowedOrganizationId = yield* Config.string("LINEAR_ALLOWED_ORGANIZATION_ID");
+    const allowedOrganizationId = yield* Config.nonEmptyString("LINEAR_ALLOWED_ORGANIZATION_ID");
     const opencodeService = yield* OpenCodeVpcService.pipe(Effect.orDie);
     const bindVpcService = yield* Cloudflare.VpcService.VpcServiceBinding;
     const opencodeBinding = yield* bindVpcService(opencodeService);

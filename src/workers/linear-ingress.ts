@@ -47,7 +47,7 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
     const oauthClientId = yield* Config.redacted("LINEAR_OAUTH_CLIENT_ID");
     const oauthClientSecret = yield* Config.redacted("LINEAR_OAUTH_CLIENT_SECRET");
     const webhookSecret = yield* Config.redacted("LINEAR_WEBHOOK_SECRET");
-    const allowedOrganizationId = yield* Config.string("LINEAR_ALLOWED_ORGANIZATION_ID");
+    const allowedOrganizationId = yield* Config.nonEmptyString("LINEAR_ALLOWED_ORGANIZATION_ID");
 
     const group = HttpApiBuilder.group(LinearWebhookApi, "LinearWebhook", (handlers) =>
       handlers
