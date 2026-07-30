@@ -264,13 +264,11 @@ export const processLinearWebhook = (message: {
           return "created";
         }
 
-        const projects = yield* opencode
-          .listProjects()
-          .pipe(
-            Effect.mapError(
-              (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
-            ),
-          );
+        const projects = yield* opencode.listProjects.pipe(
+          Effect.mapError(
+            (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+          ),
+        );
         const labels = yield* linear
           .getIssueLabels({
             accessToken: orgAuth.accessToken,

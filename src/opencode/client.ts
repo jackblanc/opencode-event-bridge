@@ -38,7 +38,7 @@ export type OpenCodeClientService = {
     readonly sessionId: string;
     readonly workspaceDirectory: string;
   }) => Effect.Effect<void, OpenCodeClientError>;
-  readonly listProjects: () => Effect.Effect<
+  readonly listProjects: Effect.Effect<
     ReadonlyArray<{ readonly directory: string; readonly id: string; readonly name: string }>,
     OpenCodeClientError
   >;
@@ -574,16 +574,15 @@ export const makeOpenCodeClient = (
           ),
         ),
       ),
-    listProjects: () =>
-      resultData(async (signal) => client.project.list(undefined, { signal })).pipe(
-        Effect.map((projects) =>
-          projects.map((project) => ({
-            directory: project.worktree,
-            id: project.id,
-            name: project.name ?? basename(project.worktree),
-          })),
-        ),
+    listProjects: resultData(async (signal) => client.project.list(undefined, { signal })).pipe(
+      Effect.map((projects) =>
+        projects.map((project) => ({
+          directory: project.worktree,
+          id: project.id,
+          name: project.name ?? basename(project.worktree),
+        })),
       ),
+    ),
     listWorktrees: (input) =>
       resultData(async (signal) =>
         client.worktree.list({ directory: input.projectDirectory }, { signal }),

@@ -283,13 +283,11 @@ const processProjectSelectionReply = (input: {
   Effect.gen(function* () {
     const opencode = yield* OpenCodeClient;
     const store = yield* LinearSessionStore;
-    const projects = yield* opencode
-      .listProjects()
-      .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
-        ),
-      );
+    const projects = yield* opencode.listProjects.pipe(
+      Effect.mapError(
+        (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+      ),
+    );
     const project = matchProject({ candidates: [input.body], projects });
 
     if (project === undefined) {
@@ -471,13 +469,11 @@ export const processPromptedInteraction = (input: {
     }
 
     if (input.locator === null) {
-      const projects = yield* opencode
-        .listProjects()
-        .pipe(
-          Effect.mapError(
-            (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
-          ),
-        );
+      const projects = yield* opencode.listProjects.pipe(
+        Effect.mapError(
+          (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+        ),
+      );
       const project = matchProject({
         candidates: [input.payload.agentActivity.content.body],
         projects,

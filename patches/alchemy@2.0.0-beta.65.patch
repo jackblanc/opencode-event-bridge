@@ -1,0 +1,290 @@
+diff --git a/lib/Cloudflare/VpcService/VpcServiceBinding.d.ts b/lib/Cloudflare/VpcService/VpcServiceBinding.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..fc5c67a57ee293d1e08bd39477957f6b15e14cfc
+--- /dev/null
++++ b/lib/Cloudflare/VpcService/VpcServiceBinding.d.ts
+@@ -0,0 +1,15 @@
++import * as Binding from "../../Binding.ts";
++import * as Effect from "effect/Effect";
++import * as Layer from "effect/Layer";
++import * as HttpClientError from "effect/unstable/http/HttpClientError";
++import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
++import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
++import { WorkerEnvironment } from "../Workers/Worker.ts";
++import type { VpcService } from "./VpcService.ts";
++export interface VpcServiceClient {
++    fetch(request: HttpClientRequest.HttpClientRequest): Effect.Effect<HttpClientResponse.HttpClientResponse, HttpClientError.HttpClientError, WorkerEnvironment>;
++}
++export interface VpcServiceBinding extends Binding.Service<VpcServiceBinding, "Cloudflare.VpcService.VpcService", (service: VpcService) => Effect.Effect<VpcServiceClient>> {
++}
++export declare const VpcServiceBinding: VpcServiceBinding;
++export declare const VpcServiceBindingLive: Layer.Layer<VpcServiceBinding>;
+diff --git a/lib/Cloudflare/VpcService/VpcServiceBinding.js b/lib/Cloudflare/VpcService/VpcServiceBinding.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..d47fe06d94dc51efecf4998ec3051a9a57e22c0e
+--- /dev/null
++++ b/lib/Cloudflare/VpcService/VpcServiceBinding.js
+@@ -0,0 +1,71 @@
++import * as Binding from "../../Binding.js";
++import * as Effect from "effect/Effect";
++import * as Layer from "effect/Layer";
++import * as HttpClientError from "effect/unstable/http/HttpClientError";
++import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
++import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
++import { isWorker, WorkerEnvironment } from "../Workers/Worker.js";
++export const VpcServiceBinding = Binding.Service("Cloudflare.VpcService.VpcService");
++export const VpcServiceBindingLive = Layer.effect(VpcServiceBinding, Effect.succeed(Effect.fn(function* (service) {
++    if (!globalThis.__ALCHEMY_RUNTIME__) {
++        const host = yield* Binding.Host;
++        if (!isWorker(host)) {
++            return yield* unsupportedHost(host);
++        }
++        yield* host.bind `${service}`({
++            bindings: [
++                {
++                    type: "vpc_service",
++                    name: service.LogicalId,
++                    serviceId: service.serviceId,
++                },
++            ],
++        });
++    }
++    return {
++        fetch: (request) => Effect.gen(function* () {
++            const env = yield* WorkerEnvironment;
++            const binding = env[service.LogicalId];
++            if (typeof binding !== "object" ||
++                binding === null ||
++                !("fetch" in binding)) {
++                return yield* new HttpClientError.HttpClientError({
++                    reason: new HttpClientError.TransportError({
++                        description: `Missing VPC service binding '${service.LogicalId}'`,
++                        request,
++                    }),
++                });
++            }
++            const fetch = binding.fetch;
++            if (typeof fetch !== "function") {
++                return yield* new HttpClientError.HttpClientError({
++                    reason: new HttpClientError.TransportError({
++                        description: `Invalid VPC service binding '${service.LogicalId}'`,
++                        request,
++                    }),
++                });
++            }
++            const web = yield* HttpServerRequest.toWeb(HttpServerRequest.fromClientRequest(request)).pipe(Effect.orDie);
++            const response = yield* Effect.tryPromise({
++                try: async (signal) => {
++                    const value = await Reflect.apply(fetch, binding, [
++                        web,
++                        { signal },
++                    ]);
++                    if (value instanceof Response) {
++                        return value;
++                    }
++                    throw new Error(`Invalid VPC service response '${service.LogicalId}'`);
++                },
++                catch: (cause) => new HttpClientError.HttpClientError({
++                    reason: new HttpClientError.TransportError({
++                        cause,
++                        request,
++                    }),
++                }),
++            });
++            return HttpClientResponse.fromWeb(request, response);
++        }),
++    };
++})));
++const unsupportedHost = (host) => Effect.die(new Error(`VpcServiceBinding does not support runtime '${host.Type}'`));
+diff --git a/lib/Cloudflare/VpcService/index.d.ts b/lib/Cloudflare/VpcService/index.d.ts
+index ab9fbb3dab614436162ba2e217673c4de56414d7..126936a2ee6d379248a11d0e3183fbb72ed800fb 100644
+--- a/lib/Cloudflare/VpcService/index.d.ts
++++ b/lib/Cloudflare/VpcService/index.d.ts
+@@ -1,3 +1,4 @@
+ export * from "./VpcService.ts";
++export * from "./VpcServiceBinding.ts";
+ export * from "./VpcServiceRef.ts";
+ //# sourceMappingURL=index.d.ts.map
+diff --git a/lib/Cloudflare/VpcService/index.js b/lib/Cloudflare/VpcService/index.js
+index 7d8fd40f59b9f3b009d9b8334f6b478d0be9b82b..ac2722779e0de10b5f4afed4b4445e6211b39eec 100644
+--- a/lib/Cloudflare/VpcService/index.js
++++ b/lib/Cloudflare/VpcService/index.js
+@@ -1,3 +1,4 @@
+ export * from "./VpcService.js";
++export * from "./VpcServiceBinding.js";
+ export * from "./VpcServiceRef.js";
+ //# sourceMappingURL=index.js.map
+diff --git a/lib/Cloudflare/Workers/Worker.d.ts b/lib/Cloudflare/Workers/Worker.d.ts
+index 376f0588d7dc7becff7b1720ef688d51bab14a5d..89a4a6ce097b4b4f13d13c501532d311f8b988c8 100644
+--- a/lib/Cloudflare/Workers/Worker.d.ts
++++ b/lib/Cloudflare/Workers/Worker.d.ts
+@@ -1057,7 +1057,7 @@ export declare const Worker: ResourceClassLike<Worker> & Effect.Effect<Worker &
+         };
+     };
+     <Self>(): {
+-        <const Id extends string, Shape extends WorkerShape, Req extends WorkerServices | Container.Application<any> | PlatformServices | Tag>(id: Id, props: InputProps<WorkerProps>, impl: Effect.Effect<Shape, ConfigError, Req>): Effect.Effect<Worker & Rpc<Self>, never, Extract<Req, Container.Application<any>> | Providers> & Named<Id> & {
++        <const Id extends string, Shape extends WorkerShape, PropsReq = never, Req extends WorkerServices | Container.Application<any> | PlatformServices | Tag = never>(id: Id, props: InputProps<WorkerProps> | Effect.Effect<InputProps<WorkerProps>, ConfigError, PropsReq>, impl: Effect.Effect<Shape, ConfigError, Req>): Effect.Effect<Worker & Rpc<Self>, never, PropsReq | Extract<Req, Container.Application<any>> | Providers> & Named<Id> & {
+             new (): MakeShape<Shape, WorkerShape> & Named<Id> & Tag;
+         };
+     };
+diff --git a/src/Cloudflare/VpcService/VpcServiceBinding.ts b/src/Cloudflare/VpcService/VpcServiceBinding.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e7cbed4a8440790fe386c09e8c45a3729ff63f97
+--- /dev/null
++++ b/src/Cloudflare/VpcService/VpcServiceBinding.ts
+@@ -0,0 +1,117 @@
++import * as Binding from "../../Binding.ts";
++import * as Effect from "effect/Effect";
++import * as Layer from "effect/Layer";
++import * as HttpClientError from "effect/unstable/http/HttpClientError";
++import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
++import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
++import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
++import type { ResourceLike } from "../../Resource.ts";
++import { isWorker, WorkerEnvironment } from "../Workers/Worker.ts";
++import type { VpcService } from "./VpcService.ts";
++
++export interface VpcServiceClient {
++  fetch(
++    request: HttpClientRequest.HttpClientRequest,
++  ): Effect.Effect<
++    HttpClientResponse.HttpClientResponse,
++    HttpClientError.HttpClientError,
++    WorkerEnvironment
++  >;
++}
++
++export interface VpcServiceBinding extends Binding.Service<
++  VpcServiceBinding,
++  "Cloudflare.VpcService.VpcService",
++  (service: VpcService) => Effect.Effect<VpcServiceClient>
++> {}
++
++export const VpcServiceBinding = Binding.Service<VpcServiceBinding>(
++  "Cloudflare.VpcService.VpcService",
++);
++
++export const VpcServiceBindingLive = Layer.effect(
++  VpcServiceBinding,
++  Effect.succeed(
++    Effect.fn(function* (service: VpcService) {
++      if (!globalThis.__ALCHEMY_RUNTIME__) {
++        const host = yield* Binding.Host;
++        if (!isWorker(host)) {
++          return yield* unsupportedHost(host);
++        }
++
++        yield* host.bind`${service}`({
++          bindings: [
++            {
++              type: "vpc_service",
++              name: service.LogicalId,
++              serviceId: service.serviceId,
++            },
++          ],
++        });
++      }
++
++      return {
++        fetch: (request) =>
++          Effect.gen(function* () {
++            const env = yield* WorkerEnvironment;
++            const binding = env[service.LogicalId];
++
++            if (
++              typeof binding !== "object" ||
++              binding === null ||
++              !("fetch" in binding)
++            ) {
++              return yield* new HttpClientError.HttpClientError({
++                reason: new HttpClientError.TransportError({
++                  description: `Missing VPC service binding '${service.LogicalId}'`,
++                  request,
++                }),
++              });
++            }
++
++            const fetch = binding.fetch;
++            if (typeof fetch !== "function") {
++              return yield* new HttpClientError.HttpClientError({
++                reason: new HttpClientError.TransportError({
++                  description: `Invalid VPC service binding '${service.LogicalId}'`,
++                  request,
++                }),
++              });
++            }
++
++            const web = yield* HttpServerRequest.toWeb(
++              HttpServerRequest.fromClientRequest(request),
++            ).pipe(Effect.orDie);
++            const response = yield* Effect.tryPromise({
++              try: async (signal) => {
++                const value: unknown = await Reflect.apply(fetch, binding, [
++                  web,
++                  { signal },
++                ]);
++                if (value instanceof Response) {
++                  return value;
++                }
++                throw new Error(
++                  `Invalid VPC service response '${service.LogicalId}'`,
++                );
++              },
++              catch: (cause) =>
++                new HttpClientError.HttpClientError({
++                  reason: new HttpClientError.TransportError({
++                    cause,
++                    request,
++                  }),
++                }),
++            });
++
++            return HttpClientResponse.fromWeb(request, response);
++          }),
++      } satisfies VpcServiceClient;
++    }),
++  ),
++);
++
++const unsupportedHost = (host: ResourceLike) =>
++  Effect.die(
++    new Error(`VpcServiceBinding does not support runtime '${host.Type}'`),
++  );
+diff --git a/src/Cloudflare/VpcService/index.ts b/src/Cloudflare/VpcService/index.ts
+index 0b8bbc0a93657512d082a9315b2ba37b5790c022..135b23fcb5b91cb149f1d18532475a90c8940a16 100644
+--- a/src/Cloudflare/VpcService/index.ts
++++ b/src/Cloudflare/VpcService/index.ts
+@@ -1,2 +1,3 @@
+ export * from "./VpcService.ts";
++export * from "./VpcServiceBinding.ts";
+ export * from "./VpcServiceRef.ts";
+diff --git a/src/Cloudflare/Workers/Worker.ts b/src/Cloudflare/Workers/Worker.ts
+index a1fa062fa77e433d1d5639ce3ce9a30793ba0a93..73bae5e8c0c507633c6473a679eec534df0b7592 100644
+--- a/src/Cloudflare/Workers/Worker.ts
++++ b/src/Cloudflare/Workers/Worker.ts
+@@ -1265,19 +1265,22 @@ export const Worker: ResourceClassLike<Worker> &
+       <
+         const Id extends string,
+         Shape extends WorkerShape,
++        PropsReq = never,
+         Req extends
+           | WorkerServices
+           | Container.Application<any>
+           | PlatformServices
+-          | Tag,
++          | Tag = never,
+       >(
+         id: Id,
+-        props: InputProps<WorkerProps>,
++        props:
++          | InputProps<WorkerProps>
++          | Effect.Effect<InputProps<WorkerProps>, ConfigError, PropsReq>,
+         impl: Effect.Effect<Shape, ConfigError, Req>,
+       ): Effect.Effect<
+         Worker & Rpc<Self>,
+         never,
+-        Extract<Req, Container.Application<any>> | Providers
++        PropsReq | Extract<Req, Container.Application<any>> | Providers
+       > &
+         Named<Id> & {
+           new (): MakeShape<Shape, WorkerShape> & Named<Id> & Tag;
