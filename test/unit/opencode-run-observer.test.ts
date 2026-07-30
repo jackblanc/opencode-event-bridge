@@ -77,7 +77,7 @@ const opencode = {
   createWorktree: () => Effect.die("unused"),
   listPendingPermissions: () => Effect.die("unused"),
   listPendingQuestions: () => Effect.die("unused"),
-  listProjects: () => Effect.die("unused"),
+  listProjects: Effect.die("unused"),
   listSessionTree: () => Effect.die("unused"),
   listWorktrees: () => Effect.die("unused"),
   promptAsync: () => Effect.die("unused"),

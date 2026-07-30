@@ -3,6 +3,6 @@ allowBuilds:
   msgpackr-extract: true
   workerd: true
 minimumReleaseAgeExclude:
-  - alchemy@2.0.0-beta.59
+  - alchemy@2.0.0-beta.65
 patchedDependencies:
-  alchemy@2.0.0-beta.59: patches/alchemy@2.0.0-beta.59.patch
+  alchemy@2.0.0-beta.65: patches/alchemy@2.0.0-beta.65.patch

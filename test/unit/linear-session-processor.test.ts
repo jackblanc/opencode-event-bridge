@@ -183,16 +183,15 @@ const makeOpencode = (input?: {
           (request.sessionIds ?? [request.sessionId]).includes(question.sessionID),
         ),
       ),
-    listProjects: () =>
-      Effect.succeed(
-        input?.projects ?? [
-          {
-            directory: "/workspace/opencode-event-bridge",
-            id: "project-id",
-            name: "opencode-event-bridge",
-          },
-        ],
-      ),
+    listProjects: Effect.succeed(
+      input?.projects ?? [
+        {
+          directory: "/workspace/opencode-event-bridge",
+          id: "project-id",
+          name: "opencode-event-bridge",
+        },
+      ],
+    ),
     listSessionTree: () => Effect.succeed(input?.sessionIds ?? ["opencode-session-id"]),
     listWorktrees: () => Effect.succeed(input?.worktrees ?? []),
     promptAsync: (prompt) =>

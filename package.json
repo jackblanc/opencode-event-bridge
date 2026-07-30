@@ -5,7 +5,7 @@
   "type": "module",
   "module": "alchemy.run.ts",
   "scripts": {
-    "prepare": "lefthook install || true && effect-language-service patch",
+    "prepare": "lefthook install || true && effect-tsgo patch",
     "test:unit": "vitest run test/unit",
     "test:e2e": "vitest run test/e2e",
     "typecheck": "tsc --noEmit",
@@ -20,23 +20,23 @@
     "check": "pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run knip && pnpm run test:unit"
   },
   "dependencies": {
-    "@effect/platform-browser": "4.0.0-beta.93",
-    "@effect/platform-node": "4.0.0-beta.93",
-    "@opencode-ai/sdk": "^1.17.13",
-    "alchemy": "2.0.0-beta.59",
-    "effect": "4.0.0-beta.93"
+    "@effect/platform-browser": "4.0.0-beta.102",
+    "@effect/platform-node": "4.0.0-beta.102",
+    "@opencode-ai/sdk": "^1.18.9",
+    "alchemy": "2.0.0-beta.65",
+    "effect": "4.0.0-beta.102"
   },
   "devDependencies": {
-    "@effect/language-service": "^0.86.4",
-    "@effect/vitest": "4.0.0-beta.93",
-    "@types/node": "^26.1.0",
-    "knip": "^6.24.0",
-    "lefthook": "^2.1.9",
-    "oxfmt": "^0.57.0",
-    "oxlint": "^1.72.0",
-    "oxlint-tsgolint": "^0.24.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "@effect/tsgo": "^0.24.3",
+    "@effect/vitest": "4.0.0-beta.102",
+    "@types/node": "^26.1.2",
+    "knip": "^6.29.0",
+    "lefthook": "^2.1.10",
+    "oxfmt": "^0.61.0",
+    "oxlint": "^1.76.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   },
-  "packageManager": "pnpm@11.7.0"
+  "packageManager": "pnpm@11.18.0"
 }

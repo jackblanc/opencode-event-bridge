@@ -15,7 +15,7 @@ const WebhookEnvelopeFields = {
   createdAt: Schema.String,
   organizationId: Schema.String,
   webhookId: Schema.String,
-  webhookTimestamp: Schema.Number,
+  webhookTimestamp: Schema.Finite,
 };
 
 const AgentSessionWebhookPayload = Schema.StructWithRest(

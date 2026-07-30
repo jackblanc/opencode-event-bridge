@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 export const LinearOAuthTokenResponse = Schema.Struct({
   access_token: Schema.String,
-  expires_in: Schema.Number,
+  expires_in: Schema.Finite,
   refresh_token: Schema.String,
 });
 
@@ -22,7 +22,7 @@ export const LinearViewerGraphqlResponse = Schema.Struct({
 
 export const LinearOrgAuthRecord = Schema.Struct({
   accessToken: Schema.String,
-  accessTokenExpiresAt: Schema.Number,
+  accessTokenExpiresAt: Schema.Finite,
   appUserId: Schema.String,
   organizationId: Schema.String,
   organizationName: Schema.String,
