@@ -22,15 +22,15 @@
   "dependencies": {
     "@effect/platform-browser": "4.0.0-beta.102",
     "@effect/platform-node": "4.0.0-beta.102",
-    "@opencode-ai/sdk": "^1.18.9",
-    "alchemy": "2.0.0-beta.65",
+    "@opencode-ai/sdk": "^1.18.11",
+    "alchemy": "2.0.0-beta.67",
     "effect": "4.0.0-beta.102"
   },
   "devDependencies": {
     "@effect/tsgo": "^0.24.3",
     "@effect/vitest": "4.0.0-beta.102",
     "@types/node": "^26.1.2",
-    "knip": "^6.29.0",
+    "knip": "^6.31.0",
     "lefthook": "^2.1.10",
     "oxfmt": "^0.61.0",
     "oxlint": "^1.76.0",
