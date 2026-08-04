@@ -3,6 +3,7 @@ allowBuilds:
   msgpackr-extract: true
   workerd: true
 minimumReleaseAgeExclude:
-  - alchemy@2.0.0-beta.65
+  - alchemy@2.0.0-beta.67
+  - "@opencode-ai/sdk@1.18.11"
 patchedDependencies:
-  alchemy@2.0.0-beta.65: patches/alchemy@2.0.0-beta.65.patch
+  alchemy@2.0.0-beta.67: patches/alchemy@2.0.0-beta.67.patch
