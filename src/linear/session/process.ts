@@ -53,8 +53,8 @@ const ensureWorktree = (input: {
     const worktrees = yield* opencode
       .listWorktrees({ projectDirectory: input.projectDirectory })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
         ),
       );
     const matched = worktrees.find((worktree) =>
@@ -69,8 +69,8 @@ const ensureWorktree = (input: {
       .createWorktree({ branch, projectDirectory: input.projectDirectory })
       .pipe(
         Effect.map((worktree) => worktree.workspaceDirectory),
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
         ),
       );
   });
@@ -96,7 +96,7 @@ export const processLinearWebhook = (message: {
       Effect.matchEffect({
         onFailure: (cause) => {
           if (cause.reason !== "MissingOrganizationAuth") {
-            return new LinearSessionProcessorError({ cause, reason: "AuthFailure" });
+            return LinearSessionProcessorError.make({ cause, reason: "AuthFailure" });
           }
 
           return Effect.logError("linear session processing failed", {
@@ -139,8 +139,8 @@ export const processLinearWebhook = (message: {
         })
         .pipe(
           Effect.asVoid,
-          Effect.mapError(
-            (cause) => new LinearSessionProcessorError({ cause, reason: "LinearFailure" }),
+          Effect.mapError((cause) =>
+            LinearSessionProcessorError.make({ cause, reason: "LinearFailure" }),
           ),
         );
 
@@ -152,8 +152,8 @@ export const processLinearWebhook = (message: {
           externalUrls: [{ label: "OpenCode", url: opencodeSessionUrl(input) }],
         })
         .pipe(
-          Effect.mapError(
-            (cause) => new LinearSessionProcessorError({ cause, reason: "LinearFailure" }),
+          Effect.mapError((cause) =>
+            LinearSessionProcessorError.make({ cause, reason: "LinearFailure" }),
           ),
         );
 
@@ -189,7 +189,7 @@ export const processLinearWebhook = (message: {
               });
             }
 
-            return new LinearSessionProcessorError({ cause: error, reason: "LinearFailure" });
+            return LinearSessionProcessorError.make({ cause: error, reason: "LinearFailure" });
           }),
         );
 
@@ -208,8 +208,8 @@ export const processLinearWebhook = (message: {
         const session = yield* opencode
           .createSession({ title: payload.agentSession.issue.title, workspaceDirectory })
           .pipe(
-            Effect.mapError(
-              (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+            Effect.mapError((cause) =>
+              LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
             ),
           );
 
@@ -225,8 +225,8 @@ export const processLinearWebhook = (message: {
             organizationId: payload.organizationId,
           })
           .pipe(
-            Effect.mapError(
-              (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+            Effect.mapError((cause) =>
+              LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
             ),
           );
 
@@ -239,8 +239,8 @@ export const processLinearWebhook = (message: {
           .promptAsync({ body: promptBody, sessionId: session.id, workspaceDirectory })
           .pipe(
             Effect.tapError(() => cancelRun()),
-            Effect.mapError(
-              (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+            Effect.mapError((cause) =>
+              LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
             ),
           );
 
@@ -254,8 +254,8 @@ export const processLinearWebhook = (message: {
           organizationId: payload.organizationId,
         })
         .pipe(
-          Effect.mapError(
-            (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+          Effect.mapError((cause) =>
+            LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
           ),
         );
 
@@ -265,8 +265,8 @@ export const processLinearWebhook = (message: {
         }
 
         const projects = yield* opencode.listProjects.pipe(
-          Effect.mapError(
-            (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+          Effect.mapError((cause) =>
+            LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
           ),
         );
         const labels = yield* linear
@@ -275,8 +275,8 @@ export const processLinearWebhook = (message: {
             issueId: payload.agentSession.issue.id,
           })
           .pipe(
-            Effect.mapError(
-              (cause) => new LinearSessionProcessorError({ cause, reason: "LinearFailure" }),
+            Effect.mapError((cause) =>
+              LinearSessionProcessorError.make({ cause, reason: "LinearFailure" }),
             ),
           );
         const project = matchProject({ candidates: projectCandidatesFromLabels(labels), projects });
@@ -292,8 +292,8 @@ export const processLinearWebhook = (message: {
               },
             })
             .pipe(
-              Effect.mapError(
-                (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+              Effect.mapError((cause) =>
+                LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
               ),
             );
           yield* postActivity({
@@ -337,8 +337,8 @@ export const processLinearWebhook = (message: {
         })
         .pipe(
           Effect.tapError(() => cancelRun()),
-          Effect.mapError(
-            (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+          Effect.mapError((cause) =>
+            LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
           ),
         );
       return "prompted";

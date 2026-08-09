@@ -1,7 +1,6 @@
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
-import { describe, expect, it, vi } from "vitest";
 
 import type {
   LinearAgentActivityContent,
@@ -54,7 +53,7 @@ const makeOrgAuthStore = () => ({
   getOrgAuth: () =>
     Effect.succeed({
       accessToken: "linear-access-token",
-      accessTokenExpiresAt: Date.now() + 1_000,
+      accessTokenExpiresAt: 1_000,
       appUserId: "app-user-id",
       organizationId: "org-id",
       organizationName: "Example",
@@ -149,7 +148,7 @@ const createdPayload = (): LinearWebhookPayload => ({
   promptContext: "start",
   type: "AgentSessionEvent",
   webhookId: "webhook-id",
-  webhookTimestamp: Date.now(),
+  webhookTimestamp: 0,
 });
 
 const rawBodyOf = (payload: LinearWebhookPayload) => {
@@ -158,26 +157,28 @@ const rawBodyOf = (payload: LinearWebhookPayload) => {
 };
 
 const sign = (rawBody: ArrayBuffer) =>
-  Effect.promise(async () => {
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(secret),
-      { hash: "SHA-256", name: "HMAC" },
-      false,
-      ["sign"],
+  Effect.gen(function* () {
+    const key = yield* Effect.promise(() =>
+      crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(secret),
+        { hash: "SHA-256", name: "HMAC" },
+        false,
+        ["sign"],
+      ),
     );
-    const bytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, rawBody));
+    const signed = yield* Effect.promise(() => crypto.subtle.sign("HMAC", key, rawBody));
+    const bytes = new Uint8Array(signed);
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   });
 
-const jsonBodyOf = (request: Request) =>
-  Effect.promise(async () => {
-    if (request.body === null) {
-      return null;
-    }
+const jsonBodyOf = (request: Request) => {
+  if (request.body === null) {
+    return Effect.succeed(null);
+  }
 
-    return request.json();
-  });
+  return Effect.promise(() => request.json());
+};
 
 const responseFor = (request: OpenCodeRequest, messageRequests: number, statusRequests: number) => {
   if (request.url === "http://127.0.0.1:4096/project") {
@@ -263,7 +264,7 @@ const makeRecordingFetch = (requests: Ref.Ref<ReadonlyArray<OpenCodeRequest>>): 
   let messageRequests = 0;
   let statusRequests = 0;
 
-  return async (input, init) => {
+  return (input, init) => {
     const request = input instanceof Request ? input : new Request(input, init);
     const effect = Effect.gen(function* () {
       const observed = {
@@ -293,10 +294,8 @@ const makeRecordingFetch = (requests: Ref.Ref<ReadonlyArray<OpenCodeRequest>>): 
 };
 
 describe("Linear webhook to OpenCode", () => {
-  it("receives a signed created agent session and sends OpenCode requests", async () => {
-    vi.setSystemTime(new Date("2026-05-14T00:00:00.000Z"));
-
-    await Effect.gen(function* () {
+  it.effect("receives a signed created agent session and sends OpenCode requests", () =>
+    Effect.gen(function* () {
       const queued = yield* Ref.make<ReadonlyArray<LinearWebhookPayload>>([]);
       const requests = yield* Ref.make<ReadonlyArray<OpenCodeRequest>>([]);
       const activities = yield* Ref.make<
@@ -332,20 +331,20 @@ describe("Linear webhook to OpenCode", () => {
       yield* Effect.forEach(messages, (message) => processAllowedWebhook(message), {
         discard: true,
       }).pipe(
-        Effect.provide([
-          Layer.succeed(LinearHttpClient)(makeLinear(activities, links)),
-          Layer.succeed(LinearOrgAuthStore)(makeOrgAuthStore()),
-          Layer.succeed(LinearSessionStore)(makeLinearSessionStore(store.kv)),
-          Layer.succeed(OpenCodeClient)(
-            makeOpenCodeClient(makeRecordingFetch(requests), opencodeBaseUrl),
-          ),
-          Layer.succeed(OpenCodeRunObserverService)(
-            OpenCodeRunObserverService.of({
-              cancel: () => Effect.void,
-              start: (run) => Ref.update(runs, (items) => [...items, run]),
-            }),
-          ),
-        ]),
+        Effect.provideService(LinearHttpClient, makeLinear(activities, links)),
+        Effect.provideService(LinearOrgAuthStore, makeOrgAuthStore()),
+        Effect.provideService(LinearSessionStore, makeLinearSessionStore(store.kv)),
+        Effect.provideService(
+          OpenCodeClient,
+          makeOpenCodeClient({ baseUrl: opencodeBaseUrl, fetch: makeRecordingFetch(requests) }),
+        ),
+        Effect.provideService(
+          OpenCodeRunObserverService,
+          OpenCodeRunObserverService.of({
+            cancel: () => Effect.void,
+            start: (run) => Ref.update(runs, (items) => [...items, run]),
+          }),
+        ),
       );
 
       const observed = yield* Ref.get(requests);
@@ -416,6 +415,6 @@ describe("Linear webhook to OpenCode", () => {
           ],
         },
       ]);
-    }).pipe(Effect.runPromise);
-  });
+    }),
+  );
 });

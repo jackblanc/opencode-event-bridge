@@ -2,6 +2,7 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Schema } from "effect";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -33,7 +34,7 @@ export const OpenCodeRunRecord = Schema.Struct({
   workspaceDirectory: Schema.String,
 });
 
-export type OpenCodeRunRecord = Schema.Schema.Type<typeof OpenCodeRunRecord>;
+export type OpenCodeRunRecord = typeof OpenCodeRunRecord.Type;
 
 export type OpenCodeRunObserverServiceShape = {
   readonly cancel: (input: { readonly linearAgentSessionId: string }) => Effect.Effect<void>;
@@ -43,7 +44,7 @@ export type OpenCodeRunObserverServiceShape = {
 export class OpenCodeRunObserverService extends Context.Service<
   OpenCodeRunObserverService,
   OpenCodeRunObserverServiceShape
->()("app/OpenCodeRunObserver") {}
+>()("opencode-event-bridge/opencode/run-observer/OpenCodeRunObserverService") {}
 
 const runKey = "run";
 const alarmDelayMillis = 1_000;
@@ -155,7 +156,7 @@ export const makeOpenCodeRunObserverHandler = (input: {
               }),
             ),
             Effect.catch((error) => {
-              if (error instanceof OpenCodeClientError && error.reason === "InputPending") {
+              if (Schema.is(OpenCodeClientError)(error) && error.reason === "InputPending") {
                 return input.state.schedule().pipe(
                   Effect.tap(() =>
                     Effect.log("opencode run observer awaiting input", {
@@ -257,7 +258,7 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObject<OpenCo
       const state = yield* Cloudflare.DurableObjectState;
       const ctx = yield* Alchemy.RuntimeContext;
 
-      const fetchOpenCode = async (input: string | URL | Request, init?: RequestInit) => {
+      const fetchOpenCode = (input: string | URL | Request, init?: RequestInit) => {
         const request = input instanceof Request ? input : new Request(input, init);
         const url = new URL(request.url);
         url.protocol = "http:";
@@ -265,7 +266,7 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObject<OpenCo
         url.port = openCodePrivatePort;
         const opencodeRequest = new Request(url, request);
         opencodeRequest.headers.set("host", url.host);
-        const webResponse = await Effect.gen(function* () {
+        return Effect.gen(function* () {
           const response = yield* opencodeBinding
             .fetch(HttpServerRequest.toClientRequest(HttpServerRequest.fromWeb(opencodeRequest)))
             .pipe(Effect.provideService(Cloudflare.WorkerEnvironment, env));
@@ -279,10 +280,8 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObject<OpenCo
             withoutBody,
           });
         }).pipe(Effect.runPromise);
-
-        return webResponse;
       };
-      const opencode = makeOpenCodeClient(fetchOpenCode);
+      const opencode = makeOpenCodeClient({ fetch: fetchOpenCode });
       const store = makeLinearSessionStore({
         delete: (key) =>
           sessionStore
@@ -306,8 +305,8 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObject<OpenCo
               Effect.provideService(Cloudflare.WorkerEnvironment, env),
             ),
       });
-      const authStore = makeLinearOrgAuthStore(
-        {
+      const authStore = makeLinearOrgAuthStore({
+        kv: {
           get: (key) =>
             orgAuthStore
               .get(key)
@@ -323,14 +322,14 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObject<OpenCo
                 Effect.provideService(Cloudflare.WorkerEnvironment, env),
               ),
         },
-        (record) =>
+        refresh: (record) =>
           Effect.gen(function* () {
             const token = yield* linear.refreshOAuthToken({
               clientId: Redacted.value(oauthClientId),
               clientSecret: Redacted.value(oauthClientSecret),
               refreshToken: record.refreshToken,
             });
-            const now = Date.now();
+            const now = yield* Clock.currentTimeMillis;
 
             return {
               ...record,
@@ -339,7 +338,7 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObject<OpenCo
               refreshToken: token.refresh_token,
             };
           }),
-      );
+      });
 
       return makeOpenCodeRunObserverHandler({
         authStore,
@@ -356,9 +355,10 @@ export default class OpenCodeRunObserver extends Cloudflare.DurableObject<OpenCo
           put: (run) =>
             state.storage.put(runKey, run).pipe(Effect.provideService(Alchemy.RuntimeContext, ctx)),
           schedule: () =>
-            state.storage
-              .setAlarm(Date.now() + alarmDelayMillis)
-              .pipe(Effect.provideService(Alchemy.RuntimeContext, ctx)),
+            Effect.gen(function* () {
+              const now = yield* Clock.currentTimeMillis;
+              yield* state.storage.setAlarm(now + alarmDelayMillis);
+            }).pipe(Effect.provideService(Alchemy.RuntimeContext, ctx)),
         },
         store,
       });

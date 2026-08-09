@@ -3,6 +3,7 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import { Stack } from "alchemy/Stack";
 import { Schema } from "effect";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -46,7 +47,7 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
   "LinearWebhookProcessor",
   Stack.useSync((stack) => ({
     main: import.meta.filename,
-    name: makeStageWorkerName(stack.stage, "event-processor"),
+    name: makeStageWorkerName({ stage: stack.stage, suffix: "event-processor" }),
     url: false,
   })),
   Effect.gen(function* () {
@@ -93,8 +94,8 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
                   Effect.provideService(Cloudflare.WorkerEnvironment, env),
                 ),
           });
-          const orgAuth = makeLinearOrgAuthStore(
-            {
+          const orgAuth = makeLinearOrgAuthStore({
+            kv: {
               get: (key) =>
                 orgAuthStore
                   .get(key)
@@ -110,14 +111,14 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
                     Effect.provideService(Cloudflare.WorkerEnvironment, env),
                   ),
             },
-            (record) =>
+            refresh: (record) =>
               Effect.gen(function* () {
                 const token = yield* linear.refreshOAuthToken({
                   clientId: Redacted.value(oauthClientId),
                   clientSecret: Redacted.value(oauthClientSecret),
                   refreshToken: record.refreshToken,
                 });
-                const now = Date.now();
+                const now = yield* Clock.currentTimeMillis;
 
                 return {
                   ...record,
@@ -126,8 +127,8 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
                   refreshToken: token.refresh_token,
                 };
               }),
-          );
-          const fetchOpenCode = async (input: string | URL | Request, init?: RequestInit) => {
+          });
+          const fetchOpenCode = (input: string | URL | Request, init?: RequestInit) => {
             const request = input instanceof Request ? input : new Request(input, init);
             const url = new URL(request.url);
             url.protocol = "http:";
@@ -135,7 +136,7 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
             url.port = openCodePrivatePort;
             const opencodeRequest = new Request(url, request);
             opencodeRequest.headers.set("host", url.host);
-            const webResponse = await Effect.gen(function* () {
+            return Effect.gen(function* () {
               const response = yield* opencodeBinding
                 .fetch(
                   HttpServerRequest.toClientRequest(HttpServerRequest.fromWeb(opencodeRequest)),
@@ -151,10 +152,8 @@ export default class LinearWebhookProcessor extends Cloudflare.Worker<LinearWebh
                 withoutBody,
               });
             }).pipe(Effect.runPromise);
-
-            return webResponse;
           };
-          const opencode = makeOpenCodeClient(fetchOpenCode);
+          const opencode = makeOpenCodeClient({ fetch: fetchOpenCode });
           const observer = makeOpenCodeRunObserverService(observers);
           const payloadOption = yield* decodeLinearWebhookQueueMessage({
             body: msg.body,

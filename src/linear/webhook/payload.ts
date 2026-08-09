@@ -233,15 +233,11 @@ export const LinearWebhookPayload = Schema.Union([
   PromptedAgentSessionEventWebhookPayload,
 ]);
 
-export type LinearWebhookPayload = Schema.Schema.Type<typeof LinearWebhookPayload>;
-export type IssueCleanupWebhookPayload = Schema.Schema.Type<typeof IssueCleanupWebhookPayload>;
-export type IssueWebhookPayload = Schema.Schema.Type<typeof IssueWebhookPayload>;
-export type CreatedAgentSessionEventWebhookPayload = Schema.Schema.Type<
-  typeof CreatedAgentSessionEventWebhookPayload
->;
-export type PromptedAgentSessionEventWebhookPayload = Schema.Schema.Type<
-  typeof PromptedAgentSessionEventWebhookPayload
->;
-export type StopAgentSessionEventWebhookPayload = Schema.Schema.Type<
-  typeof StopAgentSessionEventWebhookPayload
->;
+export type LinearWebhookPayload = typeof LinearWebhookPayload.Type;
+export type IssueCleanupWebhookPayload = typeof IssueCleanupWebhookPayload.Type;
+export type IssueWebhookPayload = typeof IssueWebhookPayload.Type;
+export type CreatedAgentSessionEventWebhookPayload =
+  typeof CreatedAgentSessionEventWebhookPayload.Type;
+export type PromptedAgentSessionEventWebhookPayload =
+  typeof PromptedAgentSessionEventWebhookPayload.Type;
+export type StopAgentSessionEventWebhookPayload = typeof StopAgentSessionEventWebhookPayload.Type;

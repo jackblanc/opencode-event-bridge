@@ -1,5 +1,4 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["stacks/**/*.ts"],
-  "ignoreDependencies": ["@effect/language-service"]
+  "entry": ["stacks/**/*.ts"]
 }

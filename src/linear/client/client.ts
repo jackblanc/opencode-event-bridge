@@ -40,7 +40,7 @@ const LinearAgentActivityContent = Schema.Union([
   }),
 ]);
 
-export type LinearAgentActivityContent = Schema.Schema.Type<typeof LinearAgentActivityContent>;
+export type LinearAgentActivityContent = typeof LinearAgentActivityContent.Type;
 
 export type LinearAgentActivitySignalMetadata = {
   readonly options: ReadonlyArray<{
@@ -90,7 +90,7 @@ const LinearGraphqlErrorResponse = Schema.Struct({
   extensions: Schema.optionalKey(Schema.Unknown),
 });
 
-type LinearGraphqlError = Schema.Schema.Type<typeof LinearGraphqlError>;
+type LinearGraphqlError = typeof LinearGraphqlError.Type;
 
 const graphqlErrorMessage = (errors: ReadonlyArray<LinearGraphqlError>) =>
   errors.map((error) => error.extensions?.userPresentableMessage ?? error.message).join("\n");
@@ -245,7 +245,7 @@ export type LinearHttpClientService = {
 };
 
 export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHttpClientService>()(
-  "app/LinearHttpClient",
+  "opencode-event-bridge/linear/client/client/LinearHttpClient",
 ) {
   static readonly layer = Layer.effect(
     LinearHttpClient,
@@ -261,15 +261,17 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
           const request = yield* HttpClientRequest.post(linearGraphqlPath).pipe(
             HttpClientRequest.setHeader("authorization", `Bearer ${accessToken}`),
             HttpClientRequest.bodyJson({ query, variables }),
-            Effect.mapError(
-              (cause) => new LinearHttpClientError({ cause, reason: "InvalidGraphqlRequest" }),
+            Effect.mapError((cause) =>
+              LinearHttpClientError.make({ cause, reason: "InvalidGraphqlRequest" }),
             ),
           );
 
           return yield* rawClient
             .execute(request)
             .pipe(
-              Effect.mapError((cause) => new LinearHttpClientError({ cause, reason: "HttpError" })),
+              Effect.mapError((cause) =>
+                LinearHttpClientError.make({ cause, reason: "HttpError" }),
+              ),
             );
         });
 
@@ -277,24 +279,23 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
         <S extends Schema.Top>(schema: S) =>
         (response: HttpClientResponse.HttpClientResponse) =>
           HttpClientResponse.schemaBodyJson(Schema.Unknown)(response).pipe(
-            Effect.mapError(
-              (cause) => new LinearHttpClientError({ cause, reason: "InvalidGraphqlResponse" }),
+            Effect.mapError((cause) =>
+              LinearHttpClientError.make({ cause, reason: "InvalidGraphqlResponse" }),
             ),
             Effect.flatMap((body) =>
               Schema.decodeUnknownEffect(LinearGraphqlErrorResponse)(body).pipe(
                 Effect.matchEffect({
                   onFailure: () =>
                     Schema.decodeUnknownEffect(schema)(body).pipe(
-                      Effect.mapError(
-                        (cause) =>
-                          new LinearHttpClientError({
-                            cause,
-                            reason: "InvalidGraphqlResponse",
-                          }),
+                      Effect.mapError((cause) =>
+                        LinearHttpClientError.make({
+                          cause,
+                          reason: "InvalidGraphqlResponse",
+                        }),
                       ),
                     ),
                   onSuccess: (failure) =>
-                    new LinearHttpClientError({
+                    LinearHttpClientError.make({
                       cause: graphqlErrorMessage(failure.errors),
                       reason: graphqlFailureReason(failure.errors),
                     }),
@@ -326,7 +327,7 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
         const result = yield* decodeGraphql(LinearAgentActivityCreateGraphqlResponse)(response);
 
         if (!result.data.agentActivityCreate.success) {
-          return yield* new LinearHttpClientError({
+          return yield* LinearHttpClientError.make({
             cause: "agentActivityCreate returned success=false",
             reason: "InvalidGraphqlResponse",
           });
@@ -353,7 +354,7 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
           }),
           client.execute,
           Effect.flatMap(HttpClientResponse.schemaBodyJson(LinearOAuthTokenResponse)),
-          Effect.mapError((cause) => new LinearHttpClientError({ cause, reason: "HttpError" })),
+          Effect.mapError((cause) => LinearHttpClientError.make({ cause, reason: "HttpError" })),
         );
       });
 
@@ -371,7 +372,7 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
           }),
           client.execute,
           Effect.flatMap(HttpClientResponse.schemaBodyJson(LinearOAuthTokenResponse)),
-          Effect.mapError((cause) => new LinearHttpClientError({ cause, reason: "HttpError" })),
+          Effect.mapError((cause) => LinearHttpClientError.make({ cause, reason: "HttpError" })),
         );
       });
 
@@ -435,7 +436,7 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
               }`,
               { after: cursor },
             );
-            const result: Schema.Schema.Type<typeof LinearIssueAgentSessionsGraphqlResponse> =
+            const result: typeof LinearIssueAgentSessionsGraphqlResponse.Type =
               yield* decodeGraphql(LinearIssueAgentSessionsGraphqlResponse)(response);
 
             for (const session of result.data.agentSessions.nodes) {
@@ -513,7 +514,7 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
           );
 
           if (!created.data.issueLabelCreate.success) {
-            return yield* new LinearHttpClientError({
+            return yield* LinearHttpClientError.make({
               cause: "issueLabelCreate returned success=false",
               reason: "InvalidGraphqlResponse",
             });
@@ -537,7 +538,7 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
         const result = yield* decodeGraphql(LinearIssueUpdateGraphqlResponse)(response);
 
         if (!result.data.issueUpdate.success) {
-          return yield* new LinearHttpClientError({
+          return yield* LinearHttpClientError.make({
             cause: "issueUpdate returned success=false",
             reason: "InvalidGraphqlResponse",
           });
@@ -567,7 +568,7 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
           const result = yield* decodeGraphql(LinearAgentSessionUpdateGraphqlResponse)(response);
 
           if (!result.data.agentSessionUpdate.success) {
-            return yield* new LinearHttpClientError({
+            return yield* LinearHttpClientError.make({
               cause: "agentSessionUpdate returned success=false",
               reason: "InvalidGraphqlResponse",
             });
@@ -601,7 +602,7 @@ export class LinearHttpClient extends Context.Service<LinearHttpClient, LinearHt
         const result = yield* decodeGraphql(LinearAgentSessionUpdateGraphqlResponse)(response);
 
         if (!result.data.agentSessionUpdate.success) {
-          return yield* new LinearHttpClientError({
+          return yield* LinearHttpClientError.make({
             cause: "agentSessionUpdate returned success=false",
             reason: "InvalidGraphqlResponse",
           });

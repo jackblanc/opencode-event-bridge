@@ -1,18 +1,12 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as GitHub from "alchemy/GitHub";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 
-const env = (name: string) =>
-  Effect.gen(function* () {
-    const value = process.env[name];
-    if (value === undefined || value === "") {
-      return yield* Effect.die(`Missing environment variable: ${name}`);
-    }
-    return value;
-  });
+const env = (name: string) => Config.nonEmptyString(name).pipe(Effect.orDie);
 
 export default Alchemy.Stack(
   "GitHub",
@@ -22,7 +16,9 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const owner = yield* env("GITHUB_OWNER");
-    const repository = process.env["GITHUB_REPOSITORY_NAME"] ?? "opencode-event-bridge";
+    const repository = yield* Config.string("GITHUB_REPOSITORY_NAME").pipe(
+      Config.withDefault("opencode-event-bridge"),
+    );
     const accountId = yield* env("CLOUDFLARE_ACCOUNT_ID");
 
     const token = yield* Cloudflare.ApiToken.AccountApiToken("CIToken", {

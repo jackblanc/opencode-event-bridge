@@ -1,43 +1,42 @@
+import { afterEach, describe, expect, layer, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LinearHttpClient } from "../../src/linear/client/client.ts";
 
-const forbiddenFetch: typeof fetch = async () => {
-  await Promise.resolve();
-  return Response.json(
-    {
-      errors: [
-        {
-          extensions: {
-            type: "forbidden",
-            userPresentableMessage: "No permission to update issue labels",
+const forbiddenFetch: typeof fetch = () =>
+  Promise.resolve(
+    Response.json(
+      {
+        errors: [
+          {
+            extensions: {
+              type: "forbidden",
+              userPresentableMessage: "No permission to update issue labels",
+            },
+            message: "Forbidden",
           },
-          message: "Forbidden",
-        },
-      ],
-    },
-    { status: 401 },
+        ],
+      },
+      { status: 401 },
+    ),
   );
-};
 
 describe("LinearHttpClient", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("classifies typed Linear GraphQL auth errors as permission failures", async () => {
-    vi.stubGlobal("fetch", forbiddenFetch);
-
-    const error = await Effect.runPromise(
+  layer(Layer.fresh(LinearHttpClient.layer))((it) => {
+    it.effect("classifies typed Linear GraphQL auth errors as permission failures", () =>
       Effect.gen(function* () {
+        vi.stubGlobal("fetch", forbiddenFetch);
         const linear = yield* LinearHttpClient;
-        return yield* linear.fetchViewer("token").pipe(Effect.flip);
-      }).pipe(Effect.provide(Layer.fresh(LinearHttpClient.layer))),
-    );
+        const error = yield* linear.fetchViewer("token").pipe(Effect.flip);
 
-    expect(error.reason).toBe("PermissionFailure");
-    expect(error.cause).toBe("No permission to update issue labels");
+        expect(error.reason).toBe("PermissionFailure");
+        expect(error.cause).toBe("No permission to update issue labels");
+      }),
+    );
   });
 });

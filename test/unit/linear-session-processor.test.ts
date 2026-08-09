@@ -1,8 +1,9 @@
 import type { PermissionRequest, QuestionRequest } from "@opencode-ai/sdk/v2/client";
 
+import { describe, expect, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import { describe, expect, it } from "vitest";
+import * as Schema from "effect/Schema";
 
 import type {
   LinearAgentActivityContent,
@@ -28,14 +29,16 @@ import {
   LinearSessionStore,
   LinearSessionStoreError,
   makeLinearSessionStore,
+  PendingOpenCodeInput,
   pendingInputKey,
+  SessionLocator,
 } from "../../src/linear/session/store.ts";
 import { OpenCodeClient, OpenCodeClientError } from "../../src/opencode/client.ts";
 import { OpenCodeRunObserverService } from "../../src/opencode/run-observer.ts";
 
 const orgAuth = {
   accessToken: "linear-access-token",
-  accessTokenExpiresAt: Date.now() + 1_000,
+  accessTokenExpiresAt: 1_000,
   appUserId: "app-user-id",
   organizationId: "org-id",
   organizationName: "Example",
@@ -51,6 +54,9 @@ const locator = {
   projectDirectory: "/workspace/opencode-event-bridge",
   workspaceDirectory: "/tmp/opencode/oeb-1",
 };
+const encodeLocator = Schema.encodeSync(Schema.fromJsonString(SessionLocator));
+const encodePendingInput = Schema.encodeSync(Schema.fromJsonString(PendingOpenCodeInput));
+const encodeUnknown = Schema.encodeSync(Schema.UnknownFromJsonString);
 
 type ActivityRecord = {
   readonly agentSessionId: string;
@@ -112,7 +118,7 @@ const makeLinear = (input: {
 
       if (input.labelWriteFailure === true) {
         return Effect.fail(
-          new LinearHttpClientError({ cause: "forbidden", reason: "PermissionFailure" }),
+          LinearHttpClientError.make({ cause: "forbidden", reason: "PermissionFailure" }),
         );
       }
 
@@ -200,7 +206,9 @@ const makeOpencode = (input?: {
       }).pipe(Effect.asVoid),
     removeWorktree: (worktree) =>
       input?.removeWorktreeFailure === true
-        ? Effect.fail(new OpenCodeClientError({ detail: "remove failed", reason: "RequestFailed" }))
+        ? Effect.fail(
+            OpenCodeClientError.make({ detail: "remove failed", reason: "RequestFailed" }),
+          )
         : Effect.sync(() => {
             input?.removals?.push(worktree.workspaceDirectory);
           }).pipe(Effect.asVoid),
@@ -320,54 +328,47 @@ const provide = (input: {
   readonly cancels?: Array<string>;
   readonly runs?: Array<OpenCodeRunRecord>;
 }) =>
-  [
-    Layer.succeed(LinearHttpClient)(input.linear),
-    Layer.succeed(LinearOrgAuthStore)({ getOrgAuth: () => Effect.succeed(orgAuth) }),
-    Layer.succeed(LinearSessionStore)(makeLinearSessionStore(input.store.kv)),
-    Layer.succeed(OpenCodeClient)(input.opencode),
-    Layer.succeed(OpenCodeRunObserverService)(makeObserver(input.runs ?? [], input.cancels ?? [])),
-  ] satisfies [
-    Layer.Layer<LinearHttpClient>,
-    Layer.Layer<LinearOrgAuthStore>,
-    Layer.Layer<LinearSessionStore>,
-    Layer.Layer<OpenCodeClient>,
-    Layer.Layer<OpenCodeRunObserverService>,
-  ];
+  Context.make(LinearHttpClient, input.linear).pipe(
+    Context.add(LinearOrgAuthStore, { getOrgAuth: () => Effect.succeed(orgAuth) }),
+    Context.add(LinearSessionStore, makeLinearSessionStore(input.store.kv)),
+    Context.add(OpenCodeClient, input.opencode),
+    Context.add(OpenCodeRunObserverService, makeObserver(input.runs ?? [], input.cancels ?? [])),
+  );
 
 describe("LinearSessionStore", () => {
-  it("preserves invalid record cause and key", async () => {
-    const key = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const store = makeLinearSessionStore(makeKv(new Map([[key, JSON.stringify({})]])).kv);
+  it.effect("preserves invalid record cause and key", () =>
+    Effect.gen(function* () {
+      const key = agentSessionKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const store = makeLinearSessionStore(makeKv(new Map([[key, encodeUnknown({})]])).kv);
 
-    const error = await Effect.runPromise(
-      store
+      const error = yield* store
         .getSessionLocator({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" })
-        .pipe(Effect.flip),
-    );
+        .pipe(Effect.flip);
 
-    expect(error).toBeInstanceOf(LinearSessionStoreError);
-    expect(error.reason).toBe("InvalidRecord");
-    expect(error.key).toBe(key);
-  });
+      expect(error).toBeInstanceOf(LinearSessionStoreError);
+      expect(error.reason).toBe("InvalidRecord");
+      expect(error.key).toBe(key);
+    }),
+  );
 });
 
 describe("processLinearWebhook", () => {
-  it("rejects unauthorized organizations before reading auth", async () => {
-    const store = makeKv();
-    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
-    const activities: Array<ActivityRecord> = [];
-    const base = createdPayload();
-    const payload: LinearWebhookPayload = {
-      ...base,
-      agentSession: { ...base.agentSession, organizationId: "other-org-id" },
-      organizationId: "other-org-id",
-    };
+  it.effect("rejects unauthorized organizations before reading auth", () =>
+    Effect.gen(function* () {
+      const store = makeKv();
+      const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+      const activities: Array<ActivityRecord> = [];
+      const base = createdPayload();
+      const payload: LinearWebhookPayload = {
+        ...base,
+        agentSession: { ...base.agentSession, organizationId: "other-org-id" },
+        organizationId: "other-org-id",
+      };
 
-    const result = await Effect.runPromise(
-      processAllowedWebhook(payload).pipe(
+      const result = yield* processAllowedWebhook(payload).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -375,24 +376,24 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(result).toBe("organization-not-allowed");
-    expect(prompts).toEqual([]);
-    expect(activities).toEqual([]);
-  });
+      expect(result).toBe("organization-not-allowed");
+      expect(prompts).toEqual([]);
+      expect(activities).toEqual([]);
+    }),
+  );
 
-  it("starts a labelled issue and stores a session locator", async () => {
-    const store = makeKv();
-    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
-    const activities: Array<{
-      readonly agentSessionId: string;
-      readonly content: LinearAgentActivityContent;
-    }> = [];
+  it.effect("starts a labelled issue and stores a session locator", () =>
+    Effect.gen(function* () {
+      const store = makeKv();
+      const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+      const activities: Array<{
+        readonly agentSessionId: string;
+        readonly content: LinearAgentActivityContent;
+      }> = [];
 
-    await Effect.runPromise(
-      processAllowedWebhook(createdPayload()).pipe(
+      yield* processAllowedWebhook(createdPayload()).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -400,27 +401,27 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(prompts).toEqual([{ body: "start", sessionId: "opencode-session-id" }]);
-    expect(
-      store.values.get(
-        agentSessionKey({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" }),
-      ),
-    ).toBe(JSON.stringify(locator));
-  });
+      expect(prompts).toEqual([{ body: "start", sessionId: "opencode-session-id" }]);
+      expect(
+        store.values.get(
+          agentSessionKey({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" }),
+        ),
+      ).toBe(encodeLocator(locator));
+    }),
+  );
 
-  it("elicits project selection when no label matches", async () => {
-    const store = makeKv();
-    const activities: Array<ActivityRecord> = [];
-    const pendingKey = pendingInputKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
+  it.effect("elicits project selection when no label matches", () =>
+    Effect.gen(function* () {
+      const store = makeKv();
+      const activities: Array<ActivityRecord> = [];
+      const pendingKey = pendingInputKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
 
-    await Effect.runPromise(
-      processAllowedWebhook(createdPayload()).pipe(
+      yield* processAllowedWebhook(createdPayload()).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities, labels: [] }),
@@ -428,56 +429,59 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(activities.at(-1)?.content.type).toBe("elicitation");
-    expect(activities.at(-1)?.signal).toBe("select");
-    expect(store.values.get(pendingKey)).toBe(
-      JSON.stringify({
-        linearAgentSessionId: "linear-session-id",
-        promptContext: "start",
-        type: "projectSelection",
-      }),
-    );
-  });
+      expect(activities.at(-1)?.content.type).toBe("elicitation");
+      expect(activities.at(-1)?.signal).toBe("select");
+      expect(store.values.get(pendingKey)).toBe(
+        encodePendingInput({
+          linearAgentSessionId: "linear-session-id",
+          promptContext: "start",
+          type: "projectSelection",
+        }),
+      );
+    }),
+  );
 
-  it("matches plain and grouped project labels", async () => {
-    const labels = [
-      [{ id: "plain", name: "opencode-event-bridge", parent: null }],
-      [{ id: "grouped", name: "opencode-event-bridge", parent: { name: "repo" } }],
-    ];
+  it.effect("matches plain and grouped project labels", () =>
+    Effect.gen(function* () {
+      const labels = [
+        [{ id: "plain", name: "opencode-event-bridge", parent: null }],
+        [{ id: "grouped", name: "opencode-event-bridge", parent: { name: "repo" } }],
+      ];
 
-    await Promise.all(
-      labels.map(async (group) => {
-        const store = makeKv();
-        const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
-        const activities: Array<ActivityRecord> = [];
+      yield* Effect.forEach(
+        labels,
+        (group) =>
+          Effect.gen(function* () {
+            const store = makeKv();
+            const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+            const activities: Array<ActivityRecord> = [];
 
-        await Effect.runPromise(
-          processAllowedWebhook(createdPayload()).pipe(
-            Effect.provide(
-              provide({
-                linear: makeLinear({ activities, labels: group }),
-                opencode: makeOpencode({ prompts }),
-                store,
-              }),
-            ),
-          ),
-        );
+            yield* processAllowedWebhook(createdPayload()).pipe(
+              Effect.provide(
+                provide({
+                  linear: makeLinear({ activities, labels: group }),
+                  opencode: makeOpencode({ prompts }),
+                  store,
+                }),
+              ),
+            );
 
-        expect(prompts).toEqual([{ body: "start", sessionId: "opencode-session-id" }]);
-      }),
-    );
-  });
+            expect(prompts).toEqual([{ body: "start", sessionId: "opencode-session-id" }]);
+          }),
+        { discard: true },
+      );
+    }),
+  );
 
-  it("elicits project selection when labels are ambiguous", async () => {
-    const store = makeKv();
-    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
-    const activities: Array<ActivityRecord> = [];
+  it.effect("elicits project selection when labels are ambiguous", () =>
+    Effect.gen(function* () {
+      const store = makeKv();
+      const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+      const activities: Array<ActivityRecord> = [];
 
-    await Effect.runPromise(
-      processAllowedWebhook(createdPayload()).pipe(
+      yield* processAllowedWebhook(createdPayload()).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -499,31 +503,31 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(prompts).toEqual([]);
-    expect(activities.at(-1)?.content.type).toBe("elicitation");
-    expect(activities.at(-1)?.signalMetadata?.options).toEqual([
-      { label: "opencode-event-bridge", value: "opencode-event-bridge" },
-      { label: "other", value: "other" },
-    ]);
-  });
+      expect(prompts).toEqual([]);
+      expect(activities.at(-1)?.content.type).toBe("elicitation");
+      expect(activities.at(-1)?.signalMetadata?.options).toEqual([
+        { label: "opencode-event-bridge", value: "opencode-event-bridge" },
+        { label: "other", value: "other" },
+      ]);
+    }),
+  );
 
-  it("continues an existing OpenCode session before reading labels", async () => {
-    const key = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const store = makeKv(new Map([[key, JSON.stringify(locator)]]));
-    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
-    const activities: Array<{
-      readonly agentSessionId: string;
-      readonly content: LinearAgentActivityContent;
-    }> = [];
+  it.effect("continues an existing OpenCode session before reading labels", () =>
+    Effect.gen(function* () {
+      const key = agentSessionKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const store = makeKv(new Map([[key, encodeLocator(locator)]]));
+      const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+      const activities: Array<{
+        readonly agentSessionId: string;
+        readonly content: LinearAgentActivityContent;
+      }> = [];
 
-    await Effect.runPromise(
-      processAllowedWebhook(promptedPayload("continue")).pipe(
+      yield* processAllowedWebhook(promptedPayload("continue")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities, labels: [] }),
@@ -531,35 +535,35 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(prompts).toEqual([{ body: "continue", sessionId: "opencode-session-id" }]);
-  });
+      expect(prompts).toEqual([{ body: "continue", sessionId: "opencode-session-id" }]);
+    }),
+  );
 
-  it("starts after project selection and writes the project label", async () => {
-    const pendingKey = pendingInputKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const store = makeKv(
-      new Map([
-        [
-          pendingKey,
-          JSON.stringify({
-            linearAgentSessionId: "linear-session-id",
-            promptContext: "original prompt context",
-            type: "projectSelection",
-          }),
-        ],
-      ]),
-    );
-    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
-    const labelWrites: Array<string> = [];
-    const activities: Array<ActivityRecord> = [];
+  it.effect("starts after project selection and writes the project label", () =>
+    Effect.gen(function* () {
+      const pendingKey = pendingInputKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const store = makeKv(
+        new Map([
+          [
+            pendingKey,
+            encodePendingInput({
+              linearAgentSessionId: "linear-session-id",
+              promptContext: "original prompt context",
+              type: "projectSelection",
+            }),
+          ],
+        ]),
+      );
+      const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+      const labelWrites: Array<string> = [];
+      const activities: Array<ActivityRecord> = [];
 
-    await Effect.runPromise(
-      processAllowedWebhook(promptedPayload("opencode-event-bridge")).pipe(
+      yield* processAllowedWebhook(promptedPayload("opencode-event-bridge")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities, labelWrites, labels: [] }),
@@ -567,23 +571,23 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(labelWrites).toEqual(["repo:opencode-event-bridge"]);
-    expect(prompts).toEqual([
-      { body: "original prompt context", sessionId: "opencode-session-id" },
-    ]);
-    expect(store.values.has(pendingKey)).toBe(false);
-  });
+      expect(labelWrites).toEqual(["repo:opencode-event-bridge"]);
+      expect(prompts).toEqual([
+        { body: "original prompt context", sessionId: "opencode-session-id" },
+      ]);
+      expect(store.values.has(pendingKey)).toBe(false);
+    }),
+  );
 
-  it("continues startup and warns when project label write is rejected", async () => {
-    const store = makeKv();
-    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
-    const activities: Array<ActivityRecord> = [];
+  it.effect("continues startup and warns when project label write is rejected", () =>
+    Effect.gen(function* () {
+      const store = makeKv();
+      const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+      const activities: Array<ActivityRecord> = [];
 
-    await Effect.runPromise(
-      processAllowedWebhook(promptedPayload("opencode-event-bridge")).pipe(
+      yield* processAllowedWebhook(promptedPayload("opencode-event-bridge")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities, labelWriteFailure: true, labels: [] }),
@@ -591,28 +595,28 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(prompts).toEqual([{ body: "start", sessionId: "opencode-session-id" }]);
-    expect(activities.map((activity) => activity.content)).toContainEqual({
-      body: "Warning: could not write Linear repo label.",
-      type: "response",
-    });
-  });
+      expect(prompts).toEqual([{ body: "start", sessionId: "opencode-session-id" }]);
+      expect(activities.map((activity) => activity.content)).toContainEqual({
+        body: "Warning: could not write Linear repo label.",
+        type: "response",
+      });
+    }),
+  );
 
-  it("does not start when project label write fails for a non-permission reason", async () => {
-    const store = makeKv();
-    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
-    const activities: Array<ActivityRecord> = [];
+  it.effect("does not start when project label write fails for a non-permission reason", () =>
+    Effect.gen(function* () {
+      const store = makeKv();
+      const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+      const activities: Array<ActivityRecord> = [];
 
-    const result = await Effect.runPromise(
-      processAllowedWebhook(promptedPayload("opencode-event-bridge")).pipe(
+      const result = yield* processAllowedWebhook(promptedPayload("opencode-event-bridge")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({
               activities,
-              labelWriteError: new LinearHttpClientError({
+              labelWriteError: LinearHttpClientError.make({
                 cause: "schema changed",
                 reason: "InvalidGraphqlResponse",
               }),
@@ -622,54 +626,54 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(result).toBe("error");
-    expect(prompts).toEqual([]);
-    expect(
-      store.values.has(
-        agentSessionKey({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" }),
-      ),
-    ).toBe(false);
-    expect(activities.map((activity) => activity.content)).toContainEqual({
-      body: "OpenCode run failed. Check bridge logs.",
-      type: "error",
-    });
-  });
+      expect(result).toBe("error");
+      expect(prompts).toEqual([]);
+      expect(
+        store.values.has(
+          agentSessionKey({ linearAgentSessionId: "linear-session-id", organizationId: "org-id" }),
+        ),
+      ).toBe(false);
+      expect(activities.map((activity) => activity.content)).toContainEqual({
+        body: "OpenCode run failed. Check bridge logs.",
+        type: "error",
+      });
+    }),
+  );
 
-  it("replies to pending permission and clears pending input", async () => {
-    const sessionKey = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const pendingKey = pendingInputKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const store = makeKv(
-      new Map([
-        [sessionKey, JSON.stringify(locator)],
-        [
-          pendingKey,
-          JSON.stringify({
-            linearAgentSessionId: "linear-session-id",
-            opencodeRequestId: "permission-id",
-            opencodeSessionId: "opencode-session-id",
-            type: "permission",
-          }),
-        ],
-      ]),
-    );
-    const permissionReplies: Array<string> = [];
-    const runs: Array<OpenCodeRunRecord> = [];
-    const activities: Array<{
-      readonly agentSessionId: string;
-      readonly content: LinearAgentActivityContent;
-    }> = [];
+  it.effect("replies to pending permission and clears pending input", () =>
+    Effect.gen(function* () {
+      const sessionKey = agentSessionKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const pendingKey = pendingInputKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const store = makeKv(
+        new Map([
+          [sessionKey, encodeLocator(locator)],
+          [
+            pendingKey,
+            encodePendingInput({
+              linearAgentSessionId: "linear-session-id",
+              opencodeRequestId: "permission-id",
+              opencodeSessionId: "opencode-session-id",
+              type: "permission",
+            }),
+          ],
+        ]),
+      );
+      const permissionReplies: Array<string> = [];
+      const runs: Array<OpenCodeRunRecord> = [];
+      const activities: Array<{
+        readonly agentSessionId: string;
+        readonly content: LinearAgentActivityContent;
+      }> = [];
 
-    await Effect.runPromise(
-      processAllowedWebhook(promptedPayload("Approve Always")).pipe(
+      yield* processAllowedWebhook(promptedPayload("Approve Always")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -678,37 +682,37 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(permissionReplies).toEqual(["always"]);
-    expect(store.values.has(pendingKey)).toBe(false);
-    expect(runs).toEqual([
-      {
+      expect(permissionReplies).toEqual(["always"]);
+      expect(store.values.has(pendingKey)).toBe(false);
+      expect(runs).toEqual([
+        {
+          linearAgentSessionId: "linear-session-id",
+          opencodeSessionId: "opencode-session-id",
+          organizationId: "org-id",
+          projectDirectory: "/workspace/opencode-event-bridge",
+          workspaceDirectory: "/tmp/opencode/oeb-1",
+        },
+      ]);
+    }),
+  );
+
+  it.effect("recovers pending permission from OpenCode before continuing", () =>
+    Effect.gen(function* () {
+      const sessionKey = agentSessionKey({
         linearAgentSessionId: "linear-session-id",
-        opencodeSessionId: "opencode-session-id",
         organizationId: "org-id",
-        projectDirectory: "/workspace/opencode-event-bridge",
-        workspaceDirectory: "/tmp/opencode/oeb-1",
-      },
-    ]);
-  });
+      });
+      const pendingKey = pendingInputKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const store = makeKv(new Map([[sessionKey, encodeLocator(locator)]]));
+      const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
+      const activities: Array<ActivityRecord> = [];
 
-  it("recovers pending permission from OpenCode before continuing", async () => {
-    const sessionKey = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const pendingKey = pendingInputKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const store = makeKv(new Map([[sessionKey, JSON.stringify(locator)]]));
-    const prompts: Array<{ readonly body: string; readonly sessionId: string }> = [];
-    const activities: Array<ActivityRecord> = [];
-
-    await Effect.runPromise(
-      processAllowedWebhook(promptedPayload("continue")).pipe(
+      yield* processAllowedWebhook(promptedPayload("continue")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -729,153 +733,151 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(prompts).toEqual([]);
-    expect(activities.at(-1)?.signal).toBe("select");
-    expect(store.values.get(pendingKey)).toBe(
-      JSON.stringify({
+      expect(prompts).toEqual([]);
+      expect(activities.at(-1)?.signal).toBe("select");
+      expect(store.values.get(pendingKey)).toBe(
+        encodePendingInput({
+          linearAgentSessionId: "linear-session-id",
+          opencodeRequestId: "permission-id",
+          opencodeSessionId: "child-session-id",
+          type: "permission",
+        }),
+      );
+    }),
+  );
+
+  it.effect("collects multi-question replies before replying to OpenCode", () =>
+    Effect.gen(function* () {
+      const sessionKey = agentSessionKey({
         linearAgentSessionId: "linear-session-id",
-        opencodeRequestId: "permission-id",
-        opencodeSessionId: "child-session-id",
-        type: "permission",
-      }),
-    );
-  });
-
-  it("collects multi-question replies before replying to OpenCode", async () => {
-    const sessionKey = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const pendingKey = pendingInputKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const questions = [
-      {
-        header: "Color",
-        options: [{ description: "Red choice", label: "Red" }],
-        question: "Pick color",
-      },
-      {
-        header: "Animal",
-        options: [{ description: "Dog choice", label: "Dog" }],
-        question: "Pick animal",
-      },
-    ];
-    const store = makeKv(
-      new Map([
-        [sessionKey, JSON.stringify(locator)],
-        [
-          pendingKey,
-          JSON.stringify({
-            answers: [null, null],
-            linearAgentSessionId: "linear-session-id",
-            opencodeRequestId: "question-id",
-            opencodeSessionId: "opencode-session-id",
-            questions,
-            type: "question",
-          }),
-        ],
-      ]),
-    );
-    const questionReplies: Array<{
-      readonly answers: ReadonlyArray<ReadonlyArray<string>>;
-      readonly requestId: string;
-    }> = [];
-    const runs: Array<OpenCodeRunRecord> = [];
-    const activities: Array<ActivityRecord> = [];
-
-    await Effect.runPromise(
-      processAllowedWebhook(promptedPayload("Red")).pipe(
-        Effect.provide(
-          provide({
-            linear: makeLinear({ activities }),
-            opencode: makeOpencode({ questionReplies }),
-            runs,
-            store,
-          }),
-        ),
-      ),
-    );
-
-    expect(questionReplies).toEqual([]);
-    expect(activities.at(-1)?.content).toEqual({
-      body: "Pick animal\n\n- Dog: Dog choice",
-      type: "elicitation",
-    });
-
-    await Effect.runPromise(
-      processAllowedWebhook(promptedPayload("Dog")).pipe(
-        Effect.provide(
-          provide({
-            linear: makeLinear({ activities }),
-            opencode: makeOpencode({ questionReplies }),
-            runs,
-            store,
-          }),
-        ),
-      ),
-    );
-
-    expect(questionReplies).toEqual([{ answers: [["Red"], ["Dog"]], requestId: "question-id" }]);
-    expect(store.values.has(pendingKey)).toBe(false);
-    expect(runs).toEqual([
-      {
-        linearAgentSessionId: "linear-session-id",
-        opencodeSessionId: "opencode-session-id",
         organizationId: "org-id",
-        projectDirectory: "/workspace/opencode-event-bridge",
-        workspaceDirectory: "/tmp/opencode/oeb-1",
-      },
-    ]);
-  });
+      });
+      const pendingKey = pendingInputKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const questions = [
+        {
+          header: "Color",
+          options: [{ description: "Red choice", label: "Red" }],
+          question: "Pick color",
+        },
+        {
+          header: "Animal",
+          options: [{ description: "Dog choice", label: "Dog" }],
+          question: "Pick animal",
+        },
+      ];
+      const store = makeKv(
+        new Map([
+          [sessionKey, encodeLocator(locator)],
+          [
+            pendingKey,
+            encodePendingInput({
+              answers: [null, null],
+              linearAgentSessionId: "linear-session-id",
+              opencodeRequestId: "question-id",
+              opencodeSessionId: "opencode-session-id",
+              questions,
+              type: "question",
+            }),
+          ],
+        ]),
+      );
+      const questionReplies: Array<{
+        readonly answers: ReadonlyArray<ReadonlyArray<string>>;
+        readonly requestId: string;
+      }> = [];
+      const runs: Array<OpenCodeRunRecord> = [];
+      const activities: Array<ActivityRecord> = [];
 
-  it("sends multiple selected answers for one OpenCode question", async () => {
-    const sessionKey = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const pendingKey = pendingInputKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const store = makeKv(
-      new Map([
-        [sessionKey, JSON.stringify(locator)],
-        [
-          pendingKey,
-          JSON.stringify({
-            answers: [null],
-            linearAgentSessionId: "linear-session-id",
-            opencodeRequestId: "question-id",
-            opencodeSessionId: "opencode-session-id",
-            questions: [
-              {
-                header: "Colors",
-                multiple: true,
-                options: [
-                  { description: "Red choice", label: "Red" },
-                  { description: "Blue choice", label: "Blue" },
-                ],
-                question: "Pick colors",
-              },
-            ],
-            type: "question",
+      yield* processAllowedWebhook(promptedPayload("Red")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ questionReplies }),
+            runs,
+            store,
           }),
-        ],
-      ]),
-    );
-    const questionReplies: Array<{
-      readonly answers: ReadonlyArray<ReadonlyArray<string>>;
-      readonly requestId: string;
-    }> = [];
-    const activities: Array<ActivityRecord> = [];
+        ),
+      );
 
-    await Effect.runPromise(
-      processAllowedWebhook(promptedPayload("red, blue")).pipe(
+      expect(questionReplies).toEqual([]);
+      expect(activities.at(-1)?.content).toEqual({
+        body: "Pick animal\n\n- Dog: Dog choice",
+        type: "elicitation",
+      });
+
+      yield* processAllowedWebhook(promptedPayload("Dog")).pipe(
+        Effect.provide(
+          provide({
+            linear: makeLinear({ activities }),
+            opencode: makeOpencode({ questionReplies }),
+            runs,
+            store,
+          }),
+        ),
+      );
+
+      expect(questionReplies).toEqual([{ answers: [["Red"], ["Dog"]], requestId: "question-id" }]);
+      expect(store.values.has(pendingKey)).toBe(false);
+      expect(runs).toEqual([
+        {
+          linearAgentSessionId: "linear-session-id",
+          opencodeSessionId: "opencode-session-id",
+          organizationId: "org-id",
+          projectDirectory: "/workspace/opencode-event-bridge",
+          workspaceDirectory: "/tmp/opencode/oeb-1",
+        },
+      ]);
+    }),
+  );
+
+  it.effect("sends multiple selected answers for one OpenCode question", () =>
+    Effect.gen(function* () {
+      const sessionKey = agentSessionKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const pendingKey = pendingInputKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const store = makeKv(
+        new Map([
+          [sessionKey, encodeLocator(locator)],
+          [
+            pendingKey,
+            encodePendingInput({
+              answers: [null],
+              linearAgentSessionId: "linear-session-id",
+              opencodeRequestId: "question-id",
+              opencodeSessionId: "opencode-session-id",
+              questions: [
+                {
+                  header: "Colors",
+                  multiple: true,
+                  options: [
+                    { description: "Red choice", label: "Red" },
+                    { description: "Blue choice", label: "Blue" },
+                  ],
+                  question: "Pick colors",
+                },
+              ],
+              type: "question",
+            }),
+          ],
+        ]),
+      );
+      const questionReplies: Array<{
+        readonly answers: ReadonlyArray<ReadonlyArray<string>>;
+        readonly requestId: string;
+      }> = [];
+      const activities: Array<ActivityRecord> = [];
+
+      yield* processAllowedWebhook(promptedPayload("red, blue")).pipe(
         Effect.provide(
           provide({
             linear: makeLinear({ activities }),
@@ -883,28 +885,28 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(questionReplies).toEqual([{ answers: [["Red", "Blue"]], requestId: "question-id" }]);
-    expect(store.values.has(pendingKey)).toBe(false);
-  });
+      expect(questionReplies).toEqual([{ answers: [["Red", "Blue"]], requestId: "question-id" }]);
+      expect(store.values.has(pendingKey)).toBe(false);
+    }),
+  );
 
-  it("aborts on stop signal and posts stopped", async () => {
-    const key = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const store = makeKv(new Map([[key, JSON.stringify(locator)]]));
-    const aborts: Array<string> = [];
-    const cancels: Array<string> = [];
-    const activities: Array<{
-      readonly agentSessionId: string;
-      readonly content: LinearAgentActivityContent;
-    }> = [];
+  it.effect("aborts on stop signal and posts stopped", () =>
+    Effect.gen(function* () {
+      const key = agentSessionKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const store = makeKv(new Map([[key, encodeLocator(locator)]]));
+      const aborts: Array<string> = [];
+      const cancels: Array<string> = [];
+      const activities: Array<{
+        readonly agentSessionId: string;
+        readonly content: LinearAgentActivityContent;
+      }> = [];
 
-    await Effect.runPromise(
-      processAllowedWebhook(stopPayload()).pipe(
+      yield* processAllowedWebhook(stopPayload()).pipe(
         Effect.provide(
           provide({
             cancels,
@@ -913,30 +915,30 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(aborts).toEqual(["opencode-session-id"]);
-    expect(cancels).toEqual(["linear-session-id"]);
-    expect(activities.at(-1)?.content).toEqual({ body: "Stopped.", type: "response" });
-  });
+      expect(aborts).toEqual(["opencode-session-id"]);
+      expect(cancels).toEqual(["linear-session-id"]);
+      expect(activities.at(-1)?.content).toEqual({ body: "Stopped.", type: "response" });
+    }),
+  );
 
-  it("cleans up completed issues after aborting sessions", async () => {
-    const key = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const store = makeKv(new Map([[key, JSON.stringify(locator)]]));
-    const aborts: Array<string> = [];
-    const cancels: Array<string> = [];
-    const removals: Array<string> = [];
-    const activities: Array<{
-      readonly agentSessionId: string;
-      readonly content: LinearAgentActivityContent;
-    }> = [];
+  it.effect("cleans up completed issues after aborting sessions", () =>
+    Effect.gen(function* () {
+      const key = agentSessionKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const store = makeKv(new Map([[key, encodeLocator(locator)]]));
+      const aborts: Array<string> = [];
+      const cancels: Array<string> = [];
+      const removals: Array<string> = [];
+      const activities: Array<{
+        readonly agentSessionId: string;
+        readonly content: LinearAgentActivityContent;
+      }> = [];
 
-    await Effect.runPromise(
-      processAllowedWebhook(issuePayload()).pipe(
+      yield* processAllowedWebhook(issuePayload()).pipe(
         Effect.provide(
           provide({
             cancels,
@@ -945,28 +947,28 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(aborts).toEqual(["opencode-session-id"]);
-    expect(cancels).toEqual(["linear-session-id"]);
-    expect(removals).toEqual(["/tmp/opencode/oeb-1"]);
-    expect(store.values.has(key)).toBe(false);
-  });
+      expect(aborts).toEqual(["opencode-session-id"]);
+      expect(cancels).toEqual(["linear-session-id"]);
+      expect(removals).toEqual(["/tmp/opencode/oeb-1"]);
+      expect(store.values.has(key)).toBe(false);
+    }),
+  );
 
-  it("keeps cleanup state when worktree removal fails", async () => {
-    const key = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const store = makeKv(new Map([[key, JSON.stringify(locator)]]));
-    const aborts: Array<string> = [];
-    const cancels: Array<string> = [];
-    const removals: Array<string> = [];
-    const activities: Array<ActivityRecord> = [];
+  it.effect("keeps cleanup state when worktree removal fails", () =>
+    Effect.gen(function* () {
+      const key = agentSessionKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const store = makeKv(new Map([[key, encodeLocator(locator)]]));
+      const aborts: Array<string> = [];
+      const cancels: Array<string> = [];
+      const removals: Array<string> = [];
+      const activities: Array<ActivityRecord> = [];
 
-    const error = await Effect.runPromise(
-      processAllowedWebhook(issuePayload()).pipe(
+      const error = yield* processAllowedWebhook(issuePayload()).pipe(
         Effect.provide(
           provide({
             cancels,
@@ -976,43 +978,43 @@ describe("processLinearWebhook", () => {
           }),
         ),
         Effect.flip,
-      ),
-    );
+      );
 
-    expect(error).toMatchObject({ reason: "OpenCodeFailure" });
-    expect(aborts).toEqual(["opencode-session-id"]);
-    expect(cancels).toEqual(["linear-session-id"]);
-    expect(removals).toEqual([]);
-    expect(store.values.has(key)).toBe(true);
-  });
+      expect(error).toMatchObject({ reason: "OpenCodeFailure" });
+      expect(aborts).toEqual(["opencode-session-id"]);
+      expect(cancels).toEqual(["linear-session-id"]);
+      expect(removals).toEqual([]);
+      expect(store.values.has(key)).toBe(true);
+    }),
+  );
 
-  it("dedupes worktree removal across issue agent sessions", async () => {
-    const first = agentSessionKey({
-      linearAgentSessionId: "linear-session-id",
-      organizationId: "org-id",
-    });
-    const second = agentSessionKey({
-      linearAgentSessionId: "linear-session-2",
-      organizationId: "org-id",
-    });
-    const secondLocator = {
-      ...locator,
-      linearAgentSessionId: "linear-session-2",
-      opencodeSessionId: "opencode-session-2",
-    };
-    const store = makeKv(
-      new Map([
-        [first, JSON.stringify(locator)],
-        [second, JSON.stringify(secondLocator)],
-      ]),
-    );
-    const aborts: Array<string> = [];
-    const cancels: Array<string> = [];
-    const removals: Array<string> = [];
-    const activities: Array<ActivityRecord> = [];
+  it.effect("dedupes worktree removal across issue agent sessions", () =>
+    Effect.gen(function* () {
+      const first = agentSessionKey({
+        linearAgentSessionId: "linear-session-id",
+        organizationId: "org-id",
+      });
+      const second = agentSessionKey({
+        linearAgentSessionId: "linear-session-2",
+        organizationId: "org-id",
+      });
+      const secondLocator = {
+        ...locator,
+        linearAgentSessionId: "linear-session-2",
+        opencodeSessionId: "opencode-session-2",
+      };
+      const store = makeKv(
+        new Map([
+          [first, encodeLocator(locator)],
+          [second, encodeLocator(secondLocator)],
+        ]),
+      );
+      const aborts: Array<string> = [];
+      const cancels: Array<string> = [];
+      const removals: Array<string> = [];
+      const activities: Array<ActivityRecord> = [];
 
-    await Effect.runPromise(
-      processAllowedWebhook(issuePayload()).pipe(
+      yield* processAllowedWebhook(issuePayload()).pipe(
         Effect.provide(
           provide({
             cancels,
@@ -1024,13 +1026,13 @@ describe("processLinearWebhook", () => {
             store,
           }),
         ),
-      ),
-    );
+      );
 
-    expect(aborts).toEqual(["opencode-session-id", "opencode-session-2"]);
-    expect(cancels).toEqual(["linear-session-id", "linear-session-2"]);
-    expect(removals).toEqual(["/tmp/opencode/oeb-1"]);
-    expect(store.values.has(first)).toBe(false);
-    expect(store.values.has(second)).toBe(false);
-  });
+      expect(aborts).toEqual(["opencode-session-id", "opencode-session-2"]);
+      expect(cancels).toEqual(["linear-session-id", "linear-session-2"]);
+      expect(removals).toEqual(["/tmp/opencode/oeb-1"]);
+      expect(store.values.has(first)).toBe(false);
+      expect(store.values.has(second)).toBe(false);
+    }),
+  );
 });
