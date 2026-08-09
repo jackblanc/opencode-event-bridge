@@ -1,7 +1,9 @@
+import { beforeEach, describeWrapped, expect, layer } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import * as Schema from "effect/Schema";
+import { TestClock } from "effect/testing";
 
 import type { LinearWebhookPayload } from "../../src/linear/webhook/payload.ts";
 
@@ -32,7 +34,7 @@ const issuePayload = (): LinearWebhookPayload => ({
   updatedFrom: null,
   url: "https://linear.app/example/issue/OEB-1",
   webhookId: "webhook-id",
-  webhookTimestamp: Date.now(),
+  webhookTimestamp: 0,
 });
 
 const bodyOf = (payload: LinearWebhookPayload) => {
@@ -41,32 +43,30 @@ const bodyOf = (payload: LinearWebhookPayload) => {
 };
 
 const sign = (raw: ArrayBuffer) =>
-  Effect.promise(async () => {
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(secret),
-      { hash: "SHA-256", name: "HMAC" },
-      false,
-      ["sign"],
+  Effect.gen(function* () {
+    const key = yield* Effect.promise(() =>
+      crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(secret),
+        { hash: "SHA-256", name: "HMAC" },
+        false,
+        ["sign"],
+      ),
     );
-    const bytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, raw));
+    const signed = yield* Effect.promise(() => crypto.subtle.sign("HMAC", key, raw));
+    const bytes = new Uint8Array(signed);
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   });
 
-describe("receiveLinearWebhook", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+describeWrapped("receiveLinearWebhook", (it) => {
+  it.effect("verifies and queues supported webhook events", () =>
+    Effect.gen(function* () {
+      const payload = issuePayload();
+      const rawBody = bodyOf(payload);
+      const signature = yield* sign(rawBody);
+      const sent: Array<LinearWebhookPayload> = [];
 
-  it("verifies and queues supported webhook events", async () => {
-    vi.setSystemTime(new Date("2026-05-14T00:00:00.000Z"));
-    const payload = issuePayload();
-    const rawBody = bodyOf(payload);
-    const signature = await Effect.runPromise(sign(rawBody));
-    const sent: Array<LinearWebhookPayload> = [];
-
-    const result = await Effect.runPromise(
-      receiveLinearWebhook({
+      const result = yield* receiveLinearWebhook({
         allowedOrganizationId: "org-id",
         event: "Issue",
         queue: {
@@ -75,20 +75,20 @@ describe("receiveLinearWebhook", () => {
         rawBody,
         signature,
         webhookSecret: secret,
-      }),
-    );
+      });
 
-    expect(result).toEqual({ queued: true });
-    expect(sent).toEqual([payload]);
-  });
+      expect(result).toEqual({ queued: true });
+      expect(sent).toEqual([payload]);
+    }),
+  );
 
-  it("ignores unsupported signed events without decoding the payload", async () => {
-    const rawBody = bodyOf(issuePayload());
-    const signature = await Effect.runPromise(sign(rawBody));
-    const sent: Array<LinearWebhookPayload> = [];
+  it.effect("ignores unsupported signed events without decoding the payload", () =>
+    Effect.gen(function* () {
+      const rawBody = bodyOf(issuePayload());
+      const signature = yield* sign(rawBody);
+      const sent: Array<LinearWebhookPayload> = [];
 
-    const result = await Effect.runPromise(
-      receiveLinearWebhook({
+      const result = yield* receiveLinearWebhook({
         allowedOrganizationId: "org-id",
         event: "Reaction",
         queue: {
@@ -97,40 +97,39 @@ describe("receiveLinearWebhook", () => {
         rawBody,
         signature,
         webhookSecret: secret,
-      }),
-    );
+      });
 
-    expect(result).toEqual({ queued: false });
-    expect(sent).toEqual([]);
-  });
+      expect(result).toEqual({ queued: false });
+      expect(sent).toEqual([]);
+    }),
+  );
 
-  it("rejects invalid signatures", async () => {
-    const rawBody = bodyOf(issuePayload());
+  it.effect("rejects invalid signatures", () =>
+    Effect.gen(function* () {
+      const rawBody = bodyOf(issuePayload());
 
-    const error = await Effect.runPromise(
-      receiveLinearWebhook({
+      const error = yield* receiveLinearWebhook({
         allowedOrganizationId: "org-id",
         event: "Issue",
         queue: { send: () => Effect.void },
         rawBody,
         signature: "00",
         webhookSecret: secret,
-      }).pipe(Effect.flip),
-    );
+      }).pipe(Effect.flip);
 
-    expect(error).toBeInstanceOf(LinearWebhookUnauthorized);
-    expect(error.reason).toBe("InvalidSignature");
-  });
+      expect(error).toBeInstanceOf(LinearWebhookUnauthorized);
+      expect(error.reason).toBe("InvalidSignature");
+    }),
+  );
 
-  it("rejects signed webhook payloads from other organizations", async () => {
-    vi.setSystemTime(new Date("2026-05-14T00:00:00.000Z"));
-    const payload: LinearWebhookPayload = { ...issuePayload(), organizationId: "other-org-id" };
-    const rawBody = bodyOf(payload);
-    const signature = await Effect.runPromise(sign(rawBody));
-    const sent: Array<LinearWebhookPayload> = [];
+  it.effect("rejects signed webhook payloads from other organizations", () =>
+    Effect.gen(function* () {
+      const payload: LinearWebhookPayload = { ...issuePayload(), organizationId: "other-org-id" };
+      const rawBody = bodyOf(payload);
+      const signature = yield* sign(rawBody);
+      const sent: Array<LinearWebhookPayload> = [];
 
-    const error = await Effect.runPromise(
-      receiveLinearWebhook({
+      const error = yield* receiveLinearWebhook({
         allowedOrganizationId: "org-id",
         event: "Issue",
         queue: {
@@ -139,96 +138,102 @@ describe("receiveLinearWebhook", () => {
         rawBody,
         signature,
         webhookSecret: secret,
-      }).pipe(Effect.flip),
-    );
+      }).pipe(Effect.flip);
 
-    expect(error).toBeInstanceOf(LinearWebhookUnauthorized);
-    expect(error.reason).toBe("OrganizationNotAllowed");
-    expect(sent).toEqual([]);
-  });
+      expect(error).toBeInstanceOf(LinearWebhookUnauthorized);
+      expect(error.reason).toBe("OrganizationNotAllowed");
+      expect(sent).toEqual([]);
+    }),
+  );
 
-  it("preserves invalid payload decode cause", async () => {
-    const bytes = new TextEncoder().encode(JSON.stringify({ type: "Issue" }));
-    const rawBody = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    const signature = await Effect.runPromise(sign(rawBody));
+  it.effect("preserves invalid payload decode cause", () =>
+    Effect.gen(function* () {
+      const serialized = yield* Schema.encodeEffect(Schema.UnknownFromJsonString)({
+        type: "Issue",
+      });
+      const bytes = new TextEncoder().encode(serialized);
+      const rawBody = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      const signature = yield* sign(rawBody);
 
-    const error = await Effect.runPromise(
-      receiveLinearWebhook({
+      const error = yield* receiveLinearWebhook({
         allowedOrganizationId: "org-id",
         event: "Issue",
         queue: { send: () => Effect.void },
         rawBody,
         signature,
         webhookSecret: secret,
-      }).pipe(Effect.flip),
-    );
+      }).pipe(Effect.flip);
 
-    expect(error).toBeInstanceOf(LinearWebhookBadRequest);
-    expect(error.reason).toBe("InvalidPayload");
-    expect(String(error.cause)).toContain("createdAt");
-  });
+      expect(error).toBeInstanceOf(LinearWebhookBadRequest);
+      expect(error.reason).toBe("InvalidPayload");
+      expect(String(error.cause)).toContain("createdAt");
+    }),
+  );
 
-  it("rejects mismatched event headers", async () => {
-    const rawBody = bodyOf(issuePayload());
-    const signature = await Effect.runPromise(sign(rawBody));
+  it.effect("rejects mismatched event headers", () =>
+    Effect.gen(function* () {
+      const rawBody = bodyOf(issuePayload());
+      const signature = yield* sign(rawBody);
 
-    const error = await Effect.runPromise(
-      receiveLinearWebhook({
+      const error = yield* receiveLinearWebhook({
         allowedOrganizationId: "org-id",
         event: "AgentSessionEvent",
         queue: { send: () => Effect.void },
         rawBody,
         signature,
         webhookSecret: secret,
-      }).pipe(Effect.flip),
-    );
+      }).pipe(Effect.flip);
 
-    expect(error).toBeInstanceOf(LinearWebhookBadRequest);
-    expect(error.reason).toBe("EventMismatch");
-  });
+      expect(error).toBeInstanceOf(LinearWebhookBadRequest);
+      expect(error.reason).toBe("EventMismatch");
+    }),
+  );
 
-  it("rejects stale webhook timestamps", async () => {
-    vi.setSystemTime(new Date("2026-05-14T00:00:00.000Z"));
-    const payload = issuePayload();
-    vi.setSystemTime(new Date("2026-05-14T00:02:01.000Z"));
-    const rawBody = bodyOf(payload);
-    const signature = await Effect.runPromise(sign(rawBody));
+  it.effect("rejects stale webhook timestamps", () =>
+    Effect.gen(function* () {
+      const payload = issuePayload();
+      yield* TestClock.adjust(121_000);
+      const rawBody = bodyOf(payload);
+      const signature = yield* sign(rawBody);
 
-    const error = await Effect.runPromise(
-      receiveLinearWebhook({
+      const error = yield* receiveLinearWebhook({
         allowedOrganizationId: "org-id",
         event: "Issue",
         queue: { send: () => Effect.void },
         rawBody,
         signature,
         webhookSecret: secret,
-      }).pipe(Effect.flip),
-    );
+      }).pipe(Effect.flip);
 
-    expect(error).toBeInstanceOf(LinearWebhookUnauthorized);
-    expect(error.reason).toBe("StaleTimestamp");
-  });
+      expect(error).toBeInstanceOf(LinearWebhookUnauthorized);
+      expect(error.reason).toBe("StaleTimestamp");
+    }),
+  );
 });
 
-describe("decodeLinearWebhookQueueMessage", () => {
-  it("logs invalid queue payload with decode cause and message id", async () => {
-    const logs: Array<unknown> = [];
-    const logger = Logger.make<unknown, void>((options) => {
-      logs.push(options.message);
-    });
+const logs: Array<unknown> = [];
+const logger = Logger.make<unknown, void>((options) => {
+  logs.push(options.message);
+});
 
-    const result = await Effect.runPromise(
-      decodeLinearWebhookQueueMessage({
+beforeEach(() => {
+  logs.length = 0;
+});
+
+layer(Logger.layer([logger]))("decodeLinearWebhookQueueMessage", (it) => {
+  it.effect("logs invalid queue payload with decode cause and message id", () =>
+    Effect.gen(function* () {
+      const result = yield* decodeLinearWebhookQueueMessage({
         body: { type: "AgentSessionEvent" },
         messageId: "msg-id",
-      }).pipe(Effect.provide(Logger.layer([logger]))),
-    );
+      });
 
-    expect(Option.isNone(result)).toBe(true);
-    const rendered = logs.map((log) => JSON.stringify(log)).join("\n");
+      expect(Option.isNone(result)).toBe(true);
+      const rendered = logs.map((log) => JSON.stringify(log)).join("\n");
 
-    expect(rendered).toContain("invalid linear webhook queue message");
-    expect(rendered).toContain("msg-id");
-    expect(rendered).toContain("webhookId");
-  });
+      expect(rendered).toContain("invalid linear webhook queue message");
+      expect(rendered).toContain("msg-id");
+      expect(rendered).toContain("webhookId");
+    }),
+  );
 });

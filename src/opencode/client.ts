@@ -1,7 +1,7 @@
 import type { Event, PermissionRequest, QuestionRequest } from "@opencode-ai/sdk/v2/client";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
-import { Schema } from "effect";
+import { Clock, Schema } from "effect";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
@@ -70,12 +70,12 @@ export type OpenCodeClientService = {
     readonly sessionId: string;
     readonly workspaceDirectory: string;
   }) => Effect.Effect<{ readonly body: string }, OpenCodeClientError>;
-  readonly waitUntilIdle: (input: {
+  readonly waitUntilIdle: <E>(input: {
     readonly sessionId: string;
     readonly onEvent?: (
       event: Event,
       opencodeSessionIds: ReadonlyArray<string>,
-    ) => Effect.Effect<void, unknown>;
+    ) => Effect.Effect<void, E>;
     readonly requireStart?: boolean;
     readonly workspaceDirectory: string;
   }) => Effect.Effect<void, OpenCodeClientError>;
@@ -102,7 +102,7 @@ export type OpenCodeClientService = {
 };
 
 export class OpenCodeClient extends Context.Service<OpenCodeClient, OpenCodeClientService>()(
-  "app/OpenCodeClient",
+  "opencode-event-bridge/opencode/client/OpenCodeClient",
 ) {}
 
 export type OpenCodeFetch = typeof fetch;
@@ -115,19 +115,19 @@ type OpenCodeSdkResult<A> = Promise<
 const resultData = <A>(run: (signal: AbortSignal) => OpenCodeSdkResult<A>) =>
   Effect.tryPromise({
     catch: (cause) =>
-      new OpenCodeClientError({ detail: detailFrom(cause), reason: "RequestFailed" }),
+      OpenCodeClientError.make({ detail: detailFrom(cause), reason: "RequestFailed" }),
     try: run,
   }).pipe(
     Effect.flatMap((result) => {
       if (result.error !== undefined) {
-        return new OpenCodeClientError({
+        return OpenCodeClientError.make({
           detail: detailFrom(result.error),
           reason: "RequestFailed",
         });
       }
 
       if (result.data === undefined) {
-        return new OpenCodeClientError({ reason: "InvalidResponse" });
+        return OpenCodeClientError.make({ reason: "InvalidResponse" });
       }
 
       return Effect.succeed(result.data);
@@ -144,12 +144,12 @@ const resultVoid = (
 ) =>
   Effect.tryPromise({
     catch: (cause) =>
-      new OpenCodeClientError({ detail: detailFrom(cause), reason: "RequestFailed" }),
+      OpenCodeClientError.make({ detail: detailFrom(cause), reason: "RequestFailed" }),
     try: run,
   }).pipe(
     Effect.flatMap((result) => {
       if (result.error !== undefined) {
-        return new OpenCodeClientError({
+        return OpenCodeClientError.make({
           detail: detailFrom(result.error),
           reason: "RequestFailed",
         });
@@ -162,7 +162,7 @@ const resultVoid = (
 const fetchVoid = (run: (signal: AbortSignal) => Promise<Response>) =>
   Effect.tryPromise({
     catch: (cause) =>
-      new OpenCodeClientError({ detail: detailFrom(cause), reason: "RequestFailed" }),
+      OpenCodeClientError.make({ detail: detailFrom(cause), reason: "RequestFailed" }),
     try: run,
   }).pipe(
     Effect.flatMap((response) => {
@@ -172,10 +172,10 @@ const fetchVoid = (run: (signal: AbortSignal) => Promise<Response>) =>
 
       return Effect.tryPromise({
         catch: (cause) =>
-          new OpenCodeClientError({ detail: detailFrom(cause), reason: "RequestFailed" }),
-        try: async () => response.text(),
+          OpenCodeClientError.make({ detail: detailFrom(cause), reason: "RequestFailed" }),
+        try: () => response.text(),
       }).pipe(
-        Effect.flatMap((detail) => new OpenCodeClientError({ detail, reason: "RequestFailed" })),
+        Effect.flatMap((detail) => OpenCodeClientError.make({ detail, reason: "RequestFailed" })),
       );
     }),
   );
@@ -282,17 +282,18 @@ const basename = (path: string) => {
 
 export const pathBasename = basename;
 
-export const makeOpenCodeClient = (
-  fetch: OpenCodeFetch,
-  baseUrl: string = openCodePrivateBaseUrl,
-) => {
-  const client = createOpencodeClient({ baseUrl, fetch });
+export const makeOpenCodeClient = (options: {
+  readonly baseUrl?: string;
+  readonly fetch: OpenCodeFetch;
+}) => {
+  const baseUrl = options.baseUrl ?? openCodePrivateBaseUrl;
+  const client = createOpencodeClient({ baseUrl, fetch: options.fetch });
 
   const sessionMessages = (input: {
     readonly sessionId: string;
     readonly workspaceDirectory: string;
   }) =>
-    resultData(async (signal) =>
+    resultData((signal) =>
       client.session.messages(
         {
           directory: input.workspaceDirectory,
@@ -304,20 +305,28 @@ export const makeOpenCodeClient = (
 
   const waitForWorkspace = (
     directory: string,
-    started: number = Date.now(),
+    started?: number,
   ): Effect.Effect<void, OpenCodeClientError> =>
-    resultData(async (signal) => client.session.status({ directory }, { signal })).pipe(
-      Effect.asVoid,
-      Effect.catch((error) => {
-        if (Date.now() - started > maxWorktreeReadyMillis) {
-          return new OpenCodeClientError({ detail: error.detail, reason: "Timeout" });
-        }
+    Effect.gen(function* () {
+      const startedAt = started ?? (yield* Clock.currentTimeMillis);
+      return yield* resultData((signal) => client.session.status({ directory }, { signal })).pipe(
+        Effect.asVoid,
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            const now = yield* Clock.currentTimeMillis;
+            if (now - startedAt > maxWorktreeReadyMillis) {
+              return yield* OpenCodeClientError.make({
+                detail: error.detail,
+                reason: "Timeout",
+              });
+            }
 
-        return Effect.sleep(waitMillis).pipe(
-          Effect.flatMap(() => waitForWorkspace(directory, started)),
-        );
-      }),
-    );
+            yield* Effect.sleep(waitMillis);
+            return yield* waitForWorkspace(directory, startedAt);
+          }),
+        ),
+      );
+    });
 
   const listSessionTree = (input: {
     readonly sessionId: string;
@@ -332,7 +341,7 @@ export const makeOpenCodeClient = (
         }
 
         seen.add(sessionId);
-        const children = yield* resultData(async (signal) =>
+        const children = yield* resultData((signal) =>
           client.session.children(
             {
               directory: input.workspaceDirectory,
@@ -356,8 +365,8 @@ export const makeOpenCodeClient = (
       const url = new URL(`/session/${encodeURIComponent(input.sessionId)}/abort`, baseUrl);
       url.searchParams.set("directory", input.workspaceDirectory);
 
-      return fetchVoid(async (signal) =>
-        fetch(url, {
+      return fetchVoid((signal) =>
+        options.fetch(url, {
           body: "{}",
           headers: { "content-type": "application/json" },
           method: "POST",
@@ -374,7 +383,7 @@ export const makeOpenCodeClient = (
             return Effect.succeed({ body });
           }
 
-          return new OpenCodeClientError({ reason: "InvalidResponse" });
+          return OpenCodeClientError.make({ reason: "InvalidResponse" });
         }),
       ),
     waitUntilIdle: (input) =>
@@ -397,12 +406,11 @@ export const makeOpenCodeClient = (
           }
 
           return input.onEvent(event, sessionIds()).pipe(
-            Effect.mapError(
-              (cause) =>
-                new OpenCodeClientError({
-                  detail: detailFrom(cause),
-                  reason: "RequestFailed",
-                }),
+            Effect.mapError((cause) =>
+              OpenCodeClientError.make({
+                detail: detailFrom(cause),
+                reason: "RequestFailed",
+              }),
             ),
           );
         };
@@ -427,19 +435,19 @@ export const makeOpenCodeClient = (
 
             const detail = eventSessionError(event, tracked);
             if (detail !== undefined) {
-              return yield* new OpenCodeClientError({ detail, reason: "SessionError" });
+              return yield* OpenCodeClientError.make({ detail, reason: "SessionError" });
             }
 
             yield* emitEvent(event);
 
             if (eventWaitsForInput(event, tracked)) {
-              return yield* new OpenCodeClientError({ reason: "InputPending" });
+              return yield* OpenCodeClientError.make({ reason: "InputPending" });
             }
 
             return false;
           });
         const emitPending = Effect.gen(function* () {
-          const permissions = yield* resultData(async (signal) =>
+          const permissions = yield* resultData((signal) =>
             client.permission.list({ directory: input.workspaceDirectory }, { signal }),
           );
           const permissionEvents = permissions
@@ -458,7 +466,7 @@ export const makeOpenCodeClient = (
             seenPending.add(permission.key);
           }
 
-          const questions = yield* resultData(async (signal) =>
+          const questions = yield* resultData((signal) =>
             client.question.list({ directory: input.workspaceDirectory }, { signal }),
           );
           const questionEvents = questions
@@ -483,17 +491,18 @@ export const makeOpenCodeClient = (
         });
         const poll = (startedAt: number): Effect.Effect<void, OpenCodeClientError> =>
           Effect.gen(function* () {
-            if (Date.now() - startedAt > maxWaitMillis) {
-              return yield* new OpenCodeClientError({ reason: "Timeout" });
+            const now = yield* Clock.currentTimeMillis;
+            if (now - startedAt > maxWaitMillis) {
+              return yield* OpenCodeClientError.make({ reason: "Timeout" });
             }
 
             yield* refreshSessionTree;
             const hasPending = yield* emitPending;
             if (hasPending) {
-              return yield* new OpenCodeClientError({ reason: "InputPending" });
+              return yield* OpenCodeClientError.make({ reason: "InputPending" });
             }
 
-            const status = yield* resultData(async (signal) =>
+            const status = yield* resultData((signal) =>
               client.session.status({ directory: input.workspaceDirectory }, { signal }),
             );
             if (sessionIds().some((id) => sessionIsActive(status, id))) {
@@ -510,8 +519,8 @@ export const makeOpenCodeClient = (
         const eventLoop: Effect.Effect<void, OpenCodeClientError> = Effect.gen(function* () {
           const events = yield* Effect.tryPromise({
             catch: (cause) =>
-              new OpenCodeClientError({ detail: detailFrom(cause), reason: "RequestFailed" }),
-            try: async (signal) =>
+              OpenCodeClientError.make({ detail: detailFrom(cause), reason: "RequestFailed" }),
+            try: (signal) =>
               client.event.subscribe({ directory: input.workspaceDirectory }, { signal }),
           });
           const iterator = events.stream[Symbol.asyncIterator]();
@@ -519,8 +528,8 @@ export const makeOpenCodeClient = (
           const loop: Effect.Effect<void, OpenCodeClientError> = Effect.gen(function* () {
             const next = yield* Effect.tryPromise({
               catch: (cause) =>
-                new OpenCodeClientError({ detail: detailFrom(cause), reason: "RequestFailed" }),
-              try: async () => iterator.next(),
+                OpenCodeClientError.make({ detail: detailFrom(cause), reason: "RequestFailed" }),
+              try: () => iterator.next(),
             });
 
             if (next.done === true) {
@@ -535,21 +544,25 @@ export const makeOpenCodeClient = (
         });
 
         yield* refreshSessionTree;
-        const initialStatus = yield* resultData(async (signal) =>
+        const initialStatus = yield* resultData((signal) =>
           client.session.status({ directory: input.workspaceDirectory }, { signal }),
         );
         if (sessionIds().some((id) => sessionIsActive(initialStatus, id))) {
           runStarted = true;
         }
 
-        if (!input.requireStart && sessionIds().every((id) => sessionIsIdle(initialStatus, id))) {
+        if (
+          input.requireStart !== true &&
+          sessionIds().every((id) => sessionIsIdle(initialStatus, id))
+        ) {
           return;
         }
 
-        yield* Effect.raceFirst(eventLoop, poll(Date.now()));
+        const startedAt = yield* Clock.currentTimeMillis;
+        yield* Effect.raceFirst(eventLoop, poll(startedAt));
       }),
     createSession: (input) =>
-      resultData(async (signal) =>
+      resultData((signal) =>
         client.session.create(
           {
             directory: input.workspaceDirectory,
@@ -559,7 +572,7 @@ export const makeOpenCodeClient = (
         ),
       ).pipe(Effect.map((session) => ({ id: session.id }))),
     createWorktree: (input) =>
-      resultData(async (signal) =>
+      resultData((signal) =>
         client.worktree.create(
           {
             directory: input.projectDirectory,
@@ -574,7 +587,7 @@ export const makeOpenCodeClient = (
           ),
         ),
       ),
-    listProjects: resultData(async (signal) => client.project.list(undefined, { signal })).pipe(
+    listProjects: resultData((signal) => client.project.list(undefined, { signal })).pipe(
       Effect.map((projects) =>
         projects.map((project) => ({
           directory: project.worktree,
@@ -584,14 +597,14 @@ export const makeOpenCodeClient = (
       ),
     ),
     listWorktrees: (input) =>
-      resultData(async (signal) =>
+      resultData((signal) =>
         client.worktree.list({ directory: input.projectDirectory }, { signal }),
       ).pipe(
         Effect.map((worktrees) => worktrees.map((workspaceDirectory) => ({ workspaceDirectory }))),
       ),
     listSessionTree,
     removeWorktree: (input) =>
-      resultData(async (signal) =>
+      resultData((signal) =>
         client.worktree.remove(
           {
             directory: input.projectDirectory,
@@ -601,7 +614,7 @@ export const makeOpenCodeClient = (
         ),
       ).pipe(Effect.asVoid),
     promptAsync: (input) =>
-      resultVoid(async (signal) =>
+      resultVoid((signal) =>
         client.session.promptAsync(
           {
             agent: "build",
@@ -613,7 +626,7 @@ export const makeOpenCodeClient = (
         ),
       ),
     listPendingPermissions: (input) =>
-      resultData(async (signal) =>
+      resultData((signal) =>
         client.permission.list({ directory: input.workspaceDirectory }, { signal }),
       ).pipe(
         Effect.map((permissions) => {
@@ -622,7 +635,7 @@ export const makeOpenCodeClient = (
         }),
       ),
     listPendingQuestions: (input) =>
-      resultData(async (signal) =>
+      resultData((signal) =>
         client.question.list({ directory: input.workspaceDirectory }, { signal }),
       ).pipe(
         Effect.map((questions) => {
@@ -631,7 +644,7 @@ export const makeOpenCodeClient = (
         }),
       ),
     replyPermission: (input) =>
-      resultData(async (signal) =>
+      resultData((signal) =>
         client.permission.reply(
           {
             directory: input.workspaceDirectory,
@@ -642,7 +655,7 @@ export const makeOpenCodeClient = (
         ),
       ).pipe(Effect.asVoid),
     replyQuestion: (input) =>
-      resultData(async (signal) =>
+      resultData((signal) =>
         client.question.reply(
           {
             answers: input.answers.map((answer) => [...answer]),

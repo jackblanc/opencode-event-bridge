@@ -34,7 +34,7 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
   "LinearWebhookReceiver",
   Stack.useSync((stack) => ({
     main: import.meta.filename,
-    name: makeStageWorkerName(stack.stage, "linear-webhook"),
+    name: makeStageWorkerName({ stage: stack.stage, suffix: "linear-webhook" }),
   })),
   Effect.gen(function* () {
     const queueResource = yield* LinearWebhookQueue;
@@ -109,11 +109,10 @@ export default class LinearWebhookReceiver extends Cloudflare.Worker<LinearWebho
     return {
       fetch: HttpApiBuilder.layer(LinearWebhookApi).pipe(
         Layer.provide(group),
-        Layer.provide([Etag.layer, HttpPlatformStub, Path.layer]),
+        Layer.provide([BrowserCrypto.layer, Etag.layer, HttpPlatformStub, Path.layer]),
         HttpRouter.toHttpEffect,
         Effect.map((handler) =>
           handler.pipe(
-            Effect.provide(BrowserCrypto.layer),
             Effect.catchCause((cause) =>
               Effect.logError("linear webhook request failed", {
                 cause: Cause.pretty(cause),

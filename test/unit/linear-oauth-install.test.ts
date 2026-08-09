@@ -1,7 +1,9 @@
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { describe, expect, it } from "vitest";
+import * as Schema from "effect/Schema";
 
 import { completeLinearOAuthInstall } from "../../src/linear/oauth/install.ts";
+import { LinearOrgAuthRecord } from "../../src/linear/oauth/schema.ts";
 import { LinearOAuthForbidden } from "../../src/linear/webhook/api.ts";
 
 const tokenResponse = {
@@ -57,12 +59,12 @@ const makeLinear = (organizationId: string) => ({
 const request = { headers: { host: "bridge.example.com" } };
 
 describe("completeLinearOAuthInstall", () => {
-  it("stores auth for the allowed organization", async () => {
-    const state = makeState();
-    const orgAuth = makeOrgAuth();
+  it.effect("stores auth for the allowed organization", () =>
+    Effect.gen(function* () {
+      const state = makeState();
+      const orgAuth = makeOrgAuth();
 
-    const result = await Effect.runPromise(
-      completeLinearOAuthInstall({
+      const result = yield* completeLinearOAuthInstall({
         allowedOrganizationId: "org-id",
         clientId: "client-id",
         clientSecret: "client-secret",
@@ -72,32 +74,32 @@ describe("completeLinearOAuthInstall", () => {
         request,
         state: state.state,
         stateValue: "state-id",
-      }),
-    );
+      });
 
-    expect(result.organizationId).toBe("org-id");
-    expect(state.deletes).toEqual(["state-id"]);
-    expect(orgAuth.writes).toEqual([
-      {
-        key: "org-id",
-        value: JSON.stringify({
-          accessToken: "linear-access-token",
-          accessTokenExpiresAt: result.accessTokenExpiresAt,
-          appUserId: "app-user-id",
-          organizationId: "org-id",
-          organizationName: "Example",
-          refreshToken: "linear-refresh-token",
-        }),
-      },
-    ]);
-  });
+      expect(result.organizationId).toBe("org-id");
+      expect(state.deletes).toEqual(["state-id"]);
+      expect(orgAuth.writes).toEqual([
+        {
+          key: "org-id",
+          value: yield* Schema.encodeEffect(Schema.fromJsonString(LinearOrgAuthRecord))({
+            accessToken: "linear-access-token",
+            accessTokenExpiresAt: result.accessTokenExpiresAt,
+            appUserId: "app-user-id",
+            organizationId: "org-id",
+            organizationName: "Example",
+            refreshToken: "linear-refresh-token",
+          }),
+        },
+      ]);
+    }),
+  );
 
-  it("rejects other organizations before storing auth", async () => {
-    const state = makeState();
-    const orgAuth = makeOrgAuth();
+  it.effect("rejects other organizations before storing auth", () =>
+    Effect.gen(function* () {
+      const state = makeState();
+      const orgAuth = makeOrgAuth();
 
-    const error = await Effect.runPromise(
-      completeLinearOAuthInstall({
+      const error = yield* completeLinearOAuthInstall({
         allowedOrganizationId: "org-id",
         clientId: "client-id",
         clientSecret: "client-secret",
@@ -107,12 +109,12 @@ describe("completeLinearOAuthInstall", () => {
         request,
         state: state.state,
         stateValue: "state-id",
-      }).pipe(Effect.flip),
-    );
+      }).pipe(Effect.flip);
 
-    expect(error).toBeInstanceOf(LinearOAuthForbidden);
-    expect(error.reason).toBe("OrganizationNotAllowed");
-    expect(state.deletes).toEqual(["state-id"]);
-    expect(orgAuth.writes).toEqual([]);
-  });
+      expect(error).toBeInstanceOf(LinearOAuthForbidden);
+      expect(error.reason).toBe("OrganizationNotAllowed");
+      expect(state.deletes).toEqual(["state-id"]);
+      expect(orgAuth.writes).toEqual([]);
+    }),
+  );
 });

@@ -163,8 +163,8 @@ const processPermissionReply = (input: {
         workspaceDirectory: input.locator.workspaceDirectory,
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
         ),
       );
     yield* store
@@ -173,8 +173,8 @@ const processPermissionReply = (input: {
         organizationId: input.organizationId,
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
         ),
       );
     yield* observeRun({ locator: input.locator, organizationId: input.organizationId });
@@ -199,8 +199,8 @@ const processQuestionReply = (input: {
       yield* store
         .putPendingInput({ organizationId: input.organizationId, pending: next })
         .pipe(
-          Effect.mapError(
-            (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+          Effect.mapError((cause) =>
+            LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
           ),
         );
       const question = next.questions[index];
@@ -224,8 +224,8 @@ const processQuestionReply = (input: {
         workspaceDirectory: input.locator.workspaceDirectory,
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
         ),
       );
     yield* store
@@ -234,8 +234,8 @@ const processQuestionReply = (input: {
         organizationId: input.organizationId,
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
         ),
       );
     yield* observeRun({ locator: input.locator, organizationId: input.organizationId });
@@ -284,8 +284,8 @@ const processProjectSelectionReply = (input: {
     const opencode = yield* OpenCodeClient;
     const store = yield* LinearSessionStore;
     const projects = yield* opencode.listProjects.pipe(
-      Effect.mapError(
-        (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+      Effect.mapError((cause) =>
+        LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
       ),
     );
     const project = matchProject({ candidates: [input.body], projects });
@@ -306,8 +306,8 @@ const processProjectSelectionReply = (input: {
         organizationId: input.organizationId,
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
         ),
       );
 
@@ -328,8 +328,8 @@ const recoverOpenCodePendingInput = (input: {
         workspaceDirectory: input.locator.workspaceDirectory,
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
         ),
       );
     const permissions = yield* opencode
@@ -339,8 +339,8 @@ const recoverOpenCodePendingInput = (input: {
         workspaceDirectory: input.locator.workspaceDirectory,
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
         ),
       );
     const permission = permissions[0];
@@ -363,8 +363,8 @@ const recoverOpenCodePendingInput = (input: {
       yield* store
         .putPendingInput({ organizationId: input.organizationId, pending })
         .pipe(
-          Effect.mapError(
-            (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+          Effect.mapError((cause) =>
+            LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
           ),
         );
       return Option.some(handled("prompted"));
@@ -377,8 +377,8 @@ const recoverOpenCodePendingInput = (input: {
         workspaceDirectory: input.locator.workspaceDirectory,
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
         ),
       );
     const question = questions[0];
@@ -408,8 +408,8 @@ const recoverOpenCodePendingInput = (input: {
     yield* store
       .putPendingInput({ organizationId: input.organizationId, pending })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
         ),
       );
 
@@ -428,7 +428,7 @@ export const processPromptedInteraction = (input: {
 
     if (input.payload.agentActivity.signal === "stop") {
       if (input.locator === null) {
-        return yield* new LinearSessionProcessorError({ reason: "MissingAgentSession" });
+        return yield* LinearSessionProcessorError.make({ reason: "MissingAgentSession" });
       }
 
       const observer = yield* OpenCodeRunObserverService;
@@ -438,8 +438,8 @@ export const processPromptedInteraction = (input: {
           workspaceDirectory: input.locator.workspaceDirectory,
         })
         .pipe(
-          Effect.mapError(
-            (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+          Effect.mapError((cause) =>
+            LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
           ),
         );
       yield* observer.cancel({ linearAgentSessionId: input.payload.agentSession.id });
@@ -453,8 +453,8 @@ export const processPromptedInteraction = (input: {
         organizationId: input.payload.organizationId,
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
         ),
       );
 
@@ -470,8 +470,8 @@ export const processPromptedInteraction = (input: {
 
     if (input.locator === null) {
       const projects = yield* opencode.listProjects.pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "OpenCodeFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "OpenCodeFailure" }),
         ),
       );
       const project = matchProject({

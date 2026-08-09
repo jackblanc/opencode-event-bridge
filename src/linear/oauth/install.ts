@@ -1,4 +1,4 @@
-import { Crypto, Schema } from "effect";
+import { Clock, Crypto, Schema } from "effect";
 import * as Effect from "effect/Effect";
 
 import type { LinearHttpClientError } from "../client/client.ts";
@@ -18,13 +18,13 @@ const makeCallbackUrl = (request: { readonly headers: Record<string, string> }) 
   Effect.gen(function* () {
     const host = request.headers["host"];
     if (host === undefined) {
-      return yield* new LinearOAuthUpstreamError({ reason: "InvalidCallbackUrl" });
+      return yield* LinearOAuthUpstreamError.make({ reason: "InvalidCallbackUrl" });
     }
     const protocol = request.headers["x-forwarded-proto"] ?? "https";
     return new URL("/api/oauth/callback", `${protocol}://${host}`).toString();
   });
 
-export const makeLinearOAuthAuthorizeUrl = <R>(input: {
+export const makeLinearOAuthAuthorizeUrl = <E, R>(input: {
   readonly clientId: string;
   readonly request: { readonly headers: Record<string, string> };
   readonly state: {
@@ -32,7 +32,7 @@ export const makeLinearOAuthAuthorizeUrl = <R>(input: {
       key: string,
       value: string,
       options: { readonly expirationTtl: number },
-    ): Effect.Effect<void, unknown, R>;
+    ): Effect.Effect<void, E, R>;
   };
 }) =>
   Effect.gen(function* () {
@@ -51,7 +51,7 @@ export const makeLinearOAuthAuthorizeUrl = <R>(input: {
     return url.toString();
   });
 
-export const completeLinearOAuthInstall = <OAuthR, OrgAuthR>(input: {
+export const completeLinearOAuthInstall = <OAuthE, OAuthR, OrgAuthE, OrgAuthR>(input: {
   readonly allowedOrganizationId: string;
   readonly clientId: string;
   readonly clientSecret: string;
@@ -67,11 +67,11 @@ export const completeLinearOAuthInstall = <OAuthR, OrgAuthR>(input: {
       accessToken: string,
     ): Effect.Effect<typeof LinearViewerGraphqlResponse.Type, LinearHttpClientError>;
   };
-  readonly orgAuth: { put(key: string, value: string): Effect.Effect<void, unknown, OrgAuthR> };
+  readonly orgAuth: { put(key: string, value: string): Effect.Effect<void, OrgAuthE, OrgAuthR> };
   readonly request: { readonly headers: Record<string, string> };
   readonly state: {
-    delete(key: string): Effect.Effect<void, unknown, OAuthR>;
-    get(key: string): Effect.Effect<string | null, unknown, OAuthR>;
+    delete(key: string): Effect.Effect<void, OAuthE, OAuthR>;
+    get(key: string): Effect.Effect<string | null, OAuthE, OAuthR>;
   };
   readonly stateValue: string;
 }) =>
@@ -79,7 +79,7 @@ export const completeLinearOAuthInstall = <OAuthR, OrgAuthR>(input: {
     const storedState = yield* input.state.get(input.stateValue).pipe(Effect.orDie);
     yield* input.state.delete(input.stateValue).pipe(Effect.orDie);
     if (storedState === null) {
-      return yield* new LinearOAuthBadRequest({ reason: "InvalidState" });
+      return yield* LinearOAuthBadRequest.make({ reason: "InvalidState" });
     }
 
     const token = yield* input.linear
@@ -90,22 +90,22 @@ export const completeLinearOAuthInstall = <OAuthR, OrgAuthR>(input: {
         redirectUri: yield* makeCallbackUrl(input.request),
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearOAuthUpstreamError({ cause, reason: "InvalidTokenResponse" }),
+        Effect.mapError((cause) =>
+          LinearOAuthUpstreamError.make({ cause, reason: "InvalidTokenResponse" }),
         ),
       );
     const viewer = yield* input.linear
       .fetchViewer(token.access_token)
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearOAuthUpstreamError({ cause, reason: "InvalidViewerResponse" }),
+        Effect.mapError((cause) =>
+          LinearOAuthUpstreamError.make({ cause, reason: "InvalidViewerResponse" }),
         ),
       );
     if (viewer.data.viewer.organization.id !== input.allowedOrganizationId) {
-      return yield* new LinearOAuthForbidden({ reason: "OrganizationNotAllowed" });
+      return yield* LinearOAuthForbidden.make({ reason: "OrganizationNotAllowed" });
     }
 
-    const now = Date.now();
+    const now = yield* Clock.currentTimeMillis;
     const record = {
       accessToken: token.access_token,
       accessTokenExpiresAt: now + token.expires_in * 1_000,
@@ -114,16 +114,16 @@ export const completeLinearOAuthInstall = <OAuthR, OrgAuthR>(input: {
       refreshToken: token.refresh_token,
       organizationName: viewer.data.viewer.organization.name,
     };
-    const encoded = yield* Schema.decodeUnknownEffect(LinearOrgAuthRecord)(record).pipe(
-      Effect.mapError(
-        (cause) => new LinearOAuthUpstreamError({ cause, reason: "InvalidTokenResponse" }),
+    const encoded = yield* Schema.decodeEffect(LinearOrgAuthRecord)(record).pipe(
+      Effect.mapError((cause) =>
+        LinearOAuthUpstreamError.make({ cause, reason: "InvalidTokenResponse" }),
       ),
     );
     const serialized = yield* Schema.encodeEffect(Schema.fromJsonString(LinearOrgAuthRecord))(
       encoded,
     ).pipe(
-      Effect.mapError(
-        (cause) => new LinearOAuthUpstreamError({ cause, reason: "InvalidTokenResponse" }),
+      Effect.mapError((cause) =>
+        LinearOAuthUpstreamError.make({ cause, reason: "InvalidTokenResponse" }),
       ),
     );
     yield* input.orgAuth.put(encoded.organizationId, serialized).pipe(Effect.orDie);

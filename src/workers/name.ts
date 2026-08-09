@@ -1,13 +1,13 @@
 const maxWorkerNameLength = 63;
 
-export const makeStageWorkerName = (stage: string, suffix: string) => {
+export const makeStageWorkerName = (input: { readonly stage: string; readonly suffix: string }) => {
   const normalizedStage =
-    stage
+    input.stage
       .toLowerCase()
       .replaceAll(/[^a-z0-9-]/g, "-")
       .replaceAll(/-+/g, "-")
       .replace(/^-|-$/g, "") || "stage";
-  const prefix = `oeb-${suffix}-`;
+  const prefix = `oeb-${input.suffix}-`;
 
   return `${prefix}${normalizedStage}`.slice(0, maxWorkerNameLength).replace(/-$/g, "");
 };

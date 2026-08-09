@@ -1,17 +1,17 @@
-import { Context, Effect, Schema } from "effect";
+import { Clock, Context, Effect, Schema } from "effect";
 
 import { LinearOrgAuthRecord } from "./schema.ts";
 
-type LinearOrgAuthRecord = Schema.Schema.Type<typeof LinearOrgAuthRecord>;
+type LinearOrgAuthRecord = typeof LinearOrgAuthRecord.Type;
 
-export type LinearOrgAuthStoreKv<R = never> = {
-  readonly get: (key: string) => Effect.Effect<string | null, unknown, R>;
-  readonly put: (key: string, value: string) => Effect.Effect<void, unknown, R>;
+export type LinearOrgAuthStoreKv<E = never, R = never> = {
+  readonly get: (key: string) => Effect.Effect<string | null, E, R>;
+  readonly put: (key: string, value: string) => Effect.Effect<void, E, R>;
 };
 
-export type LinearOrgAuthRefresh = (
+export type LinearOrgAuthRefresh<E = never> = (
   record: LinearOrgAuthRecord,
-) => Effect.Effect<LinearOrgAuthRecord, unknown>;
+) => Effect.Effect<LinearOrgAuthRecord, E>;
 
 export type LinearOrgAuthStoreService = {
   readonly getOrgAuth: (input: {
@@ -22,7 +22,7 @@ export type LinearOrgAuthStoreService = {
 export class LinearOrgAuthStore extends Context.Service<
   LinearOrgAuthStore,
   LinearOrgAuthStoreService
->()("app/LinearOrgAuthStore") {}
+>()("opencode-event-bridge/linear/oauth/auth/LinearOrgAuthStore") {}
 
 export class LinearOrgAuthStoreError extends Schema.TaggedErrorClass<LinearOrgAuthStoreError>()(
   "LinearOrgAuthStoreError",
@@ -40,83 +40,86 @@ export class LinearOrgAuthStoreError extends Schema.TaggedErrorClass<LinearOrgAu
 
 const expirySkewMillis = 60_000;
 
-const readOrgAuth = (input: {
-  readonly kv: LinearOrgAuthStoreKv;
+const readOrgAuth = <E>(input: {
+  readonly kv: LinearOrgAuthStoreKv<E>;
   readonly organizationId: string;
 }) =>
   Effect.gen(function* () {
     const value = yield* input.kv.get(input.organizationId).pipe(
-      Effect.mapError(
-        (cause) =>
-          new LinearOrgAuthStoreError({
-            cause,
-            key: input.organizationId,
-            reason: "StoreFailure",
-          }),
+      Effect.mapError((cause) =>
+        LinearOrgAuthStoreError.make({
+          cause,
+          key: input.organizationId,
+          reason: "StoreFailure",
+        }),
       ),
     );
 
     if (value === null) {
-      return yield* new LinearOrgAuthStoreError({ reason: "MissingOrganizationAuth" });
+      return yield* LinearOrgAuthStoreError.make({ reason: "MissingOrganizationAuth" });
     }
 
-    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(LinearOrgAuthRecord))(
-      value,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new LinearOrgAuthStoreError({
-            cause,
-            key: input.organizationId,
-            reason: "InvalidRecord",
-          }),
+    return yield* Schema.decodeEffect(Schema.fromJsonString(LinearOrgAuthRecord))(value).pipe(
+      Effect.mapError((cause) =>
+        LinearOrgAuthStoreError.make({
+          cause,
+          key: input.organizationId,
+          reason: "InvalidRecord",
+        }),
       ),
     );
   });
 
-const putOrgAuth = (input: {
-  readonly kv: LinearOrgAuthStoreKv;
+const putOrgAuth = <E>(input: {
+  readonly kv: LinearOrgAuthStoreKv<E>;
   readonly record: LinearOrgAuthRecord;
 }) =>
   Schema.encodeEffect(Schema.fromJsonString(LinearOrgAuthRecord))(input.record).pipe(
-    Effect.mapError(
-      (cause) =>
-        new LinearOrgAuthStoreError({
-          cause,
-          key: input.record.organizationId,
-          reason: "InvalidRecord",
-        }),
+    Effect.mapError((cause) =>
+      LinearOrgAuthStoreError.make({
+        cause,
+        key: input.record.organizationId,
+        reason: "InvalidRecord",
+      }),
     ),
     Effect.flatMap((value) =>
       input.kv.put(input.record.organizationId, value).pipe(
-        Effect.mapError(
-          (cause) =>
-            new LinearOrgAuthStoreError({
-              cause,
-              key: input.record.organizationId,
-              reason: "StoreFailure",
-            }),
+        Effect.mapError((cause) =>
+          LinearOrgAuthStoreError.make({
+            cause,
+            key: input.record.organizationId,
+            reason: "StoreFailure",
+          }),
         ),
       ),
     ),
   );
 
-export const makeLinearOrgAuthStore = (kv: LinearOrgAuthStoreKv, refresh?: LinearOrgAuthRefresh) =>
+export const makeLinearOrgAuthStore = <E, RefreshE>(input: {
+  readonly kv: LinearOrgAuthStoreKv<E>;
+  readonly refresh?: LinearOrgAuthRefresh<RefreshE>;
+}) =>
   LinearOrgAuthStore.of({
-    getOrgAuth: (input) =>
+    getOrgAuth: (getInput) =>
       Effect.gen(function* () {
-        const record = yield* readOrgAuth({ kv, organizationId: input.organizationId });
+        const record = yield* readOrgAuth({
+          kv: input.kv,
+          organizationId: getInput.organizationId,
+        });
+        const now = yield* Clock.currentTimeMillis;
 
-        if (record.accessTokenExpiresAt > Date.now() + expirySkewMillis || refresh === undefined) {
+        if (record.accessTokenExpiresAt > now + expirySkewMillis || input.refresh === undefined) {
           return record;
         }
 
-        const refreshed = yield* refresh(record).pipe(
-          Effect.mapError(
-            (cause) => new LinearOrgAuthStoreError({ cause, reason: "RefreshFailure" }),
-          ),
-        );
-        yield* putOrgAuth({ kv, record: refreshed });
+        const refreshed = yield* input
+          .refresh(record)
+          .pipe(
+            Effect.mapError((cause) =>
+              LinearOrgAuthStoreError.make({ cause, reason: "RefreshFailure" }),
+            ),
+          );
+        yield* putOrgAuth({ kv: input.kv, record: refreshed });
 
         return refreshed;
       }),

@@ -1,5 +1,5 @@
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { describe, expect, it } from "vitest";
 
 import type {
   LinearAgentActivityContent,
@@ -97,112 +97,120 @@ const store = {
 } satisfies LinearSessionStoreService;
 
 describe("OpenCode run observer", () => {
-  it("reschedules auth failures without clearing the active run", async () => {
-    const state = makeState(run);
-    const handler = makeOpenCodeRunObserverHandler({
-      authStore: {
-        getOrgAuth: () =>
-          Effect.fail(new LinearOrgAuthStoreError({ reason: "MissingOrganizationAuth" })),
-      },
-      linear: makeLinear([]),
-      opencode,
-      state: state.state,
-      store,
-    });
+  it.effect("reschedules auth failures without clearing the active run", () =>
+    Effect.gen(function* () {
+      const state = makeState(run);
+      const handler = makeOpenCodeRunObserverHandler({
+        authStore: {
+          getOrgAuth: () =>
+            Effect.fail(LinearOrgAuthStoreError.make({ reason: "MissingOrganizationAuth" })),
+        },
+        linear: makeLinear([]),
+        opencode,
+        state: state.state,
+        store,
+      });
 
-    await Effect.runPromise(handler.alarm());
+      yield* handler.alarm();
 
-    expect(state.alarmCount()).toBe(1);
-    expect(state.clearCount()).toBe(0);
-    expect(state.stored()).toEqual(run);
-  });
+      expect(state.alarmCount()).toBe(1);
+      expect(state.clearCount()).toBe(0);
+      expect(state.stored()).toEqual(run);
+    }),
+  );
 
-  it("posts the completed response and clears the active run", async () => {
-    const state = makeState(run);
-    const activities: Array<{
-      readonly content: LinearAgentActivityContent;
-      readonly sessionId: string;
-    }> = [];
-    const handler = makeOpenCodeRunObserverHandler({
-      authStore: {
-        getOrgAuth: () =>
-          Effect.succeed({
-            accessToken: "linear-access-token",
-            accessTokenExpiresAt: Date.now() + 1_000,
-            appUserId: "app-user-id",
-            organizationId: "org-id",
-            organizationName: "Example",
-            refreshToken: "refresh-token",
-          }),
-      },
-      linear: makeLinear(activities),
-      opencode,
-      state: state.state,
-      store,
-    });
+  it.effect("posts the completed response and clears the active run", () =>
+    Effect.gen(function* () {
+      const state = makeState(run);
+      const activities: Array<{
+        readonly content: LinearAgentActivityContent;
+        readonly sessionId: string;
+      }> = [];
+      const handler = makeOpenCodeRunObserverHandler({
+        authStore: {
+          getOrgAuth: () =>
+            Effect.succeed({
+              accessToken: "linear-access-token",
+              accessTokenExpiresAt: 1_000,
+              appUserId: "app-user-id",
+              organizationId: "org-id",
+              organizationName: "Example",
+              refreshToken: "refresh-token",
+            }),
+        },
+        linear: makeLinear(activities),
+        opencode,
+        state: state.state,
+        store,
+      });
 
-    await Effect.runPromise(handler.alarm());
+      yield* handler.alarm();
 
-    expect(activities).toEqual([
-      {
-        content: { body: "done", type: "response" },
-        sessionId: "linear-session-id",
-      },
-    ]);
-    expect(state.clearCount()).toBe(1);
-    expect(state.stored()).toBeUndefined();
-  });
+      expect(activities).toEqual([
+        {
+          content: { body: "done", type: "response" },
+          sessionId: "linear-session-id",
+        },
+      ]);
+      expect(state.clearCount()).toBe(1);
+      expect(state.stored()).toBeUndefined();
+    }),
+  );
 
-  it("reschedules pending input without clearing the active run", async () => {
-    const state = makeState(run);
-    const activities: Array<{
-      readonly content: LinearAgentActivityContent;
-      readonly sessionId: string;
-    }> = [];
-    const pendingOpencode = {
-      ...opencode,
-      waitUntilIdle: () => Effect.fail(new OpenCodeClientError({ reason: "InputPending" })),
-    } satisfies OpenCodeClientService;
-    const handler = makeOpenCodeRunObserverHandler({
-      authStore: {
-        getOrgAuth: () =>
-          Effect.succeed({
-            accessToken: "linear-access-token",
-            accessTokenExpiresAt: Date.now() + 1_000,
-            appUserId: "app-user-id",
-            organizationId: "org-id",
-            organizationName: "Example",
-            refreshToken: "refresh-token",
-          }),
-      },
-      linear: makeLinear(activities),
-      opencode: pendingOpencode,
-      state: state.state,
-      store,
-    });
+  it.effect("reschedules pending input without clearing the active run", () =>
+    Effect.gen(function* () {
+      const state = makeState(run);
+      const activities: Array<{
+        readonly content: LinearAgentActivityContent;
+        readonly sessionId: string;
+      }> = [];
+      const pendingOpencode = {
+        ...opencode,
+        waitUntilIdle: () => Effect.fail(OpenCodeClientError.make({ reason: "InputPending" })),
+      } satisfies OpenCodeClientService;
+      const handler = makeOpenCodeRunObserverHandler({
+        authStore: {
+          getOrgAuth: () =>
+            Effect.succeed({
+              accessToken: "linear-access-token",
+              accessTokenExpiresAt: 1_000,
+              appUserId: "app-user-id",
+              organizationId: "org-id",
+              organizationName: "Example",
+              refreshToken: "refresh-token",
+            }),
+        },
+        linear: makeLinear(activities),
+        opencode: pendingOpencode,
+        state: state.state,
+        store,
+      });
 
-    await Effect.runPromise(handler.alarm());
+      yield* handler.alarm();
 
-    expect(activities).toEqual([]);
-    expect(state.alarmCount()).toBe(1);
-    expect(state.clearCount()).toBe(0);
-    expect(state.stored()).toEqual(run);
-  });
+      expect(activities).toEqual([]);
+      expect(state.alarmCount()).toBe(1);
+      expect(state.clearCount()).toBe(0);
+      expect(state.stored()).toEqual(run);
+    }),
+  );
 
-  it("clears invalid stored run records", async () => {
-    const state = makeState({});
-    const handler = makeOpenCodeRunObserverHandler({
-      authStore: {
-        getOrgAuth: () => Effect.die("unused"),
-      },
-      linear: makeLinear([]),
-      opencode,
-      state: state.state,
-      store,
-    });
+  it.effect("clears invalid stored run records", () =>
+    Effect.gen(function* () {
+      const state = makeState({});
+      const handler = makeOpenCodeRunObserverHandler({
+        authStore: {
+          getOrgAuth: () => Effect.die("unused"),
+        },
+        linear: makeLinear([]),
+        opencode,
+        state: state.state,
+        store,
+      });
 
-    await Effect.runPromise(handler.alarm());
+      yield* handler.alarm();
 
-    expect(state.clearCount()).toBe(1);
-  });
+      expect(state.clearCount()).toBe(1);
+    }),
+  );
 });

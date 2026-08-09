@@ -1,7 +1,9 @@
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { describe, expect, it, vi } from "vitest";
+import * as Schema from "effect/Schema";
 
 import { LinearOrgAuthStoreError, makeLinearOrgAuthStore } from "../../src/linear/oauth/auth.ts";
+import { LinearOrgAuthRecord } from "../../src/linear/oauth/schema.ts";
 
 const record = {
   accessToken: "old-access-token",
@@ -11,6 +13,7 @@ const record = {
   organizationName: "Example",
   refreshToken: "old-refresh-token",
 };
+const encodedRecord = Schema.encodeSync(Schema.fromJsonString(LinearOrgAuthRecord))(record);
 
 const makeKv = (value: string | null) => {
   const writes: Array<{ readonly key: string; readonly value: string }> = [];
@@ -28,45 +31,50 @@ const makeKv = (value: string | null) => {
 };
 
 describe("LinearOrgAuthStore", () => {
-  it("refreshes expired org auth and stores the refreshed record", async () => {
-    vi.setSystemTime(new Date("2026-05-14T00:00:00.000Z"));
-    const kv = makeKv(JSON.stringify(record));
-    const store = makeLinearOrgAuthStore(kv.kv, (current) =>
-      Effect.succeed({
-        ...current,
-        accessToken: "new-access-token",
-        accessTokenExpiresAt: Date.now() + 3_600_000,
-        refreshToken: "new-refresh-token",
-      }),
-    );
+  it.effect("refreshes expired org auth and stores the refreshed record", () =>
+    Effect.gen(function* () {
+      const kv = makeKv(encodedRecord);
+      const store = makeLinearOrgAuthStore({
+        kv: kv.kv,
+        refresh: (current) =>
+          Effect.succeed({
+            ...current,
+            accessToken: "new-access-token",
+            accessTokenExpiresAt: 3_600_000,
+            refreshToken: "new-refresh-token",
+          }),
+      });
 
-    const result = await Effect.runPromise(store.getOrgAuth({ organizationId: "org-id" }));
+      const result = yield* store.getOrgAuth({ organizationId: "org-id" });
 
-    expect(result.accessToken).toBe("new-access-token");
-    expect(kv.writes).toEqual([
-      {
-        key: "org-id",
-        value: JSON.stringify({
-          ...record,
-          accessToken: "new-access-token",
-          accessTokenExpiresAt: Date.now() + 3_600_000,
-          refreshToken: "new-refresh-token",
-        }),
-      },
-    ]);
-    vi.useRealTimers();
-  });
+      expect(result.accessToken).toBe("new-access-token");
+      expect(kv.writes).toEqual([
+        {
+          key: "org-id",
+          value: yield* Schema.encodeEffect(Schema.fromJsonString(LinearOrgAuthRecord))({
+            ...record,
+            accessToken: "new-access-token",
+            accessTokenExpiresAt: 3_600_000,
+            refreshToken: "new-refresh-token",
+          }),
+        },
+      ]);
+    }),
+  );
 
-  it("surfaces refresh failures without overwriting stored auth", async () => {
-    const kv = makeKv(JSON.stringify(record));
-    const store = makeLinearOrgAuthStore(kv.kv, () => Effect.fail("refresh failed"));
+  it.effect("surfaces refresh failures without overwriting stored auth", () =>
+    Effect.gen(function* () {
+      const kv = makeKv(encodedRecord);
+      const store = makeLinearOrgAuthStore({
+        kv: kv.kv,
+        refresh: () => Effect.fail("refresh failed"),
+      });
 
-    const error = await Effect.runPromise(
-      store.getOrgAuth({ organizationId: "org-id" }).pipe(Effect.flip),
-    );
+      const error = yield* store.getOrgAuth({ organizationId: "org-id" }).pipe(Effect.flip);
 
-    expect(error).toBeInstanceOf(LinearOrgAuthStoreError);
-    expect(error.reason).toBe("RefreshFailure");
-    expect(kv.writes).toEqual([]);
-  });
+      expect(error).toBeInstanceOf(LinearOrgAuthStoreError);
+      expect(error.reason).toBe("RefreshFailure");
+      expect(kv.writes).toEqual([]);
+    }),
+  );
 });

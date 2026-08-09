@@ -16,8 +16,8 @@ export const LinearPendingInputKey = Schema.TemplateLiteral([
   Schema.String.check(Schema.isMinLength(1)),
 ]);
 
-export type LinearAgentSessionKey = Schema.Schema.Type<typeof LinearAgentSessionKey>;
-export type LinearPendingInputKey = Schema.Schema.Type<typeof LinearPendingInputKey>;
+export type LinearAgentSessionKey = typeof LinearAgentSessionKey.Type;
+export type LinearPendingInputKey = typeof LinearPendingInputKey.Type;
 
 const QuestionOption = Schema.Struct({
   description: Schema.String,
@@ -52,7 +52,7 @@ export const PendingOpenCodeInput = Schema.Union([
     type: Schema.Literal("permission"),
   }),
   Schema.Struct({
-    answers: Schema.Array(Schema.NullOr(Schema.Array(Schema.String))),
+    answers: Schema.String.pipe(Schema.Array, Schema.NullOr, Schema.Array),
     linearAgentSessionId: Schema.String,
     opencodeRequestId: Schema.String,
     opencodeSessionId: Schema.String,
@@ -61,21 +61,21 @@ export const PendingOpenCodeInput = Schema.Union([
   }),
 ]);
 
-export type Question = Schema.Schema.Type<typeof Question>;
-export type SessionLocator = Schema.Schema.Type<typeof SessionLocator>;
-export type PendingOpenCodeInput = Schema.Schema.Type<typeof PendingOpenCodeInput>;
+export type Question = typeof Question.Type;
+export type SessionLocator = typeof SessionLocator.Type;
+export type PendingOpenCodeInput = typeof PendingOpenCodeInput.Type;
 
-export type LinearSessionStoreKv<R = never> = {
+export type LinearSessionStoreKv<E = never, R = never> = {
   readonly delete: (
     key: LinearAgentSessionKey | LinearPendingInputKey,
-  ) => Effect.Effect<void, unknown, R>;
+  ) => Effect.Effect<void, E, R>;
   readonly get: (
     key: LinearAgentSessionKey | LinearPendingInputKey,
-  ) => Effect.Effect<string | null, unknown, R>;
+  ) => Effect.Effect<string | null, E, R>;
   readonly put: (
     key: LinearAgentSessionKey | LinearPendingInputKey,
     value: string,
-  ) => Effect.Effect<void, unknown, R>;
+  ) => Effect.Effect<void, E, R>;
 };
 
 export type LinearSessionStoreService = {
@@ -108,7 +108,7 @@ export type LinearSessionStoreService = {
 export class LinearSessionStore extends Context.Service<
   LinearSessionStore,
   LinearSessionStoreService
->()("app/LinearSessionStore") {}
+>()("opencode-event-bridge/linear/session/store/LinearSessionStore") {}
 
 export class LinearSessionStoreError extends Schema.TaggedErrorClass<LinearSessionStoreError>()(
   "LinearSessionStoreError",
@@ -130,8 +130,8 @@ export const pendingInputKey = (input: {
   readonly linearAgentSessionId: string;
 }): LinearPendingInputKey => `linear:${input.organizationId}:pending:${input.linearAgentSessionId}`;
 
-const getRecord = <R, S extends Schema.Top>(input: {
-  readonly kv: LinearSessionStoreKv<R>;
+const getRecord = <E, R, S extends Schema.Top>(input: {
+  readonly kv: LinearSessionStoreKv<E, R>;
   readonly key: LinearAgentSessionKey | LinearPendingInputKey;
   readonly schema: S;
 }) =>
@@ -139,8 +139,8 @@ const getRecord = <R, S extends Schema.Top>(input: {
     const value = yield* input.kv
       .get(input.key)
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionStoreError({ cause, key: input.key, reason: "StoreFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionStoreError.make({ cause, key: input.key, reason: "StoreFailure" }),
         ),
       );
 
@@ -148,48 +148,47 @@ const getRecord = <R, S extends Schema.Top>(input: {
       return null;
     }
 
-    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(input.schema))(value).pipe(
-      Effect.mapError(
-        (cause) => new LinearSessionStoreError({ cause, key: input.key, reason: "InvalidRecord" }),
+    return yield* Schema.decodeEffect(Schema.fromJsonString(input.schema))(value).pipe(
+      Effect.mapError((cause) =>
+        LinearSessionStoreError.make({ cause, key: input.key, reason: "InvalidRecord" }),
       ),
     );
   });
 
-const putRecord = <R, S extends Schema.Top>(input: {
-  readonly kv: LinearSessionStoreKv<R>;
+const putRecord = <E, R, S extends Schema.Top>(input: {
+  readonly kv: LinearSessionStoreKv<E, R>;
   readonly key: LinearAgentSessionKey | LinearPendingInputKey;
   readonly record: Schema.Schema.Type<S>;
   readonly schema: S;
 }) =>
   Schema.encodeEffect(Schema.fromJsonString(input.schema))(input.record).pipe(
-    Effect.mapError(
-      (cause) => new LinearSessionStoreError({ cause, key: input.key, reason: "InvalidRecord" }),
+    Effect.mapError((cause) =>
+      LinearSessionStoreError.make({ cause, key: input.key, reason: "InvalidRecord" }),
     ),
     Effect.flatMap((value) =>
       input.kv
         .put(input.key, value)
         .pipe(
-          Effect.mapError(
-            (cause) =>
-              new LinearSessionStoreError({ cause, key: input.key, reason: "StoreFailure" }),
+          Effect.mapError((cause) =>
+            LinearSessionStoreError.make({ cause, key: input.key, reason: "StoreFailure" }),
           ),
         ),
     ),
   );
 
-const deleteRecord = <R>(input: {
-  readonly kv: LinearSessionStoreKv<R>;
+const deleteRecord = <E, R>(input: {
+  readonly kv: LinearSessionStoreKv<E, R>;
   readonly key: LinearAgentSessionKey | LinearPendingInputKey;
 }) =>
   input.kv
     .delete(input.key)
     .pipe(
-      Effect.mapError(
-        (cause) => new LinearSessionStoreError({ cause, key: input.key, reason: "StoreFailure" }),
+      Effect.mapError((cause) =>
+        LinearSessionStoreError.make({ cause, key: input.key, reason: "StoreFailure" }),
       ),
     );
 
-export const makeLinearSessionStore = (kv: LinearSessionStoreKv) =>
+export const makeLinearSessionStore = <E>(kv: LinearSessionStoreKv<E>) =>
   LinearSessionStore.of({
     deletePendingInput: (input) => deleteRecord({ key: pendingInputKey(input), kv }),
     deleteSessionLocator: (input) => deleteRecord({ key: agentSessionKey(input), kv }),

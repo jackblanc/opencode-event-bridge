@@ -44,8 +44,8 @@ export const processIssueWebhook = (input: {
         issueId: payload.data.id,
       })
       .pipe(
-        Effect.mapError(
-          (cause) => new LinearSessionProcessorError({ cause, reason: "LinearFailure" }),
+        Effect.mapError((cause) =>
+          LinearSessionProcessorError.make({ cause, reason: "LinearFailure" }),
         ),
       );
     const locators = yield* Effect.all(
@@ -56,8 +56,8 @@ export const processIssueWebhook = (input: {
             organizationId: payload.organizationId,
           })
           .pipe(
-            Effect.mapError(
-              (cause) => new LinearSessionProcessorError({ cause, reason: "StoreFailure" }),
+            Effect.mapError((cause) =>
+              LinearSessionProcessorError.make({ cause, reason: "StoreFailure" }),
             ),
           ),
       ),
@@ -76,7 +76,7 @@ export const processIssueWebhook = (input: {
     const abort = aborts.find(Result.isFailure);
 
     if (abort !== undefined) {
-      return yield* new LinearSessionProcessorError({
+      return yield* LinearSessionProcessorError.make({
         cause: abort.failure,
         reason: "OpenCodeFailure",
       });
@@ -101,7 +101,7 @@ export const processIssueWebhook = (input: {
     const removal = removals.find(Result.isFailure);
 
     if (removal !== undefined) {
-      return yield* new LinearSessionProcessorError({
+      return yield* LinearSessionProcessorError.make({
         cause: removal.failure,
         reason: "OpenCodeFailure",
       });
@@ -123,7 +123,7 @@ export const processIssueWebhook = (input: {
     const deletion = deletes.find(Result.isFailure);
 
     if (deletion !== undefined) {
-      return yield* new LinearSessionProcessorError({
+      return yield* LinearSessionProcessorError.make({
         cause: deletion.failure,
         reason: "StoreFailure",
       });

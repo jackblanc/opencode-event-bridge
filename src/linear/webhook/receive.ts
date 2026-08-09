@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Clock, Schema } from "effect";
 import * as Effect from "effect/Effect";
 
 import { LinearWebhookBadRequest, LinearWebhookUnauthorized } from "./api.ts";
@@ -9,32 +9,37 @@ const supportedEvents = new Set(["AgentSessionEvent", "Issue"]);
 
 const decodeAndValidateLinearWebhookPayload = (rawBody: ArrayBuffer, linearEventHeader: string) =>
   Effect.gen(function* () {
-    const linearWebhookPayload = yield* Schema.decodeUnknownEffect(
+    const linearWebhookPayload = yield* Schema.decodeEffect(
       Schema.fromJsonString(LinearWebhookPayload),
     )(new TextDecoder().decode(rawBody)).pipe(
-      Effect.mapError((cause) => new LinearWebhookBadRequest({ cause, reason: "InvalidPayload" })),
+      Effect.mapError((cause) => LinearWebhookBadRequest.make({ cause, reason: "InvalidPayload" })),
     );
 
     if (linearWebhookPayload.type !== linearEventHeader) {
-      return yield* new LinearWebhookBadRequest({ reason: "EventMismatch" });
+      return yield* LinearWebhookBadRequest.make({ reason: "EventMismatch" });
     }
-    if (Math.abs(Date.now() - linearWebhookPayload.webhookTimestamp) > 60_000) {
-      return yield* new LinearWebhookUnauthorized({ reason: "StaleTimestamp" });
+    const now = yield* Clock.currentTimeMillis;
+    if (Math.abs(now - linearWebhookPayload.webhookTimestamp) > 60_000) {
+      return yield* LinearWebhookUnauthorized.make({ reason: "StaleTimestamp" });
     }
 
     return linearWebhookPayload;
   });
 
-export const receiveLinearWebhook = <R>(input: {
+export const receiveLinearWebhook = <E, R>(input: {
   readonly allowedOrganizationId: string;
   readonly event: string;
-  readonly queue: { send(payload: LinearWebhookPayload): Effect.Effect<void, unknown, R> };
+  readonly queue: { send(payload: LinearWebhookPayload): Effect.Effect<void, E, R> };
   readonly rawBody: ArrayBuffer;
   readonly signature: string;
   readonly webhookSecret: string;
 }) =>
   Effect.gen(function* () {
-    yield* verifyLinearWebhookSignature(input.webhookSecret, input.signature, input.rawBody);
+    yield* verifyLinearWebhookSignature({
+      headerSignature: input.signature,
+      rawBody: input.rawBody,
+      webhookSecret: input.webhookSecret,
+    });
 
     if (!supportedEvents.has(input.event)) {
       return { queued: false };
@@ -42,7 +47,7 @@ export const receiveLinearWebhook = <R>(input: {
 
     const payload = yield* decodeAndValidateLinearWebhookPayload(input.rawBody, input.event);
     if (payload.organizationId !== input.allowedOrganizationId) {
-      return yield* new LinearWebhookUnauthorized({ reason: "OrganizationNotAllowed" });
+      return yield* LinearWebhookUnauthorized.make({ reason: "OrganizationNotAllowed" });
     }
 
     yield* Effect.log("linear webhook payload decoded", {

@@ -4,5 +4,13 @@ allowBuilds:
   workerd: true
 minimumReleaseAgeExclude:
   - alchemy@2.0.0-beta.65
+  - "@effect/tsgo-darwin-arm64@0.36.1"
+  - "@effect/tsgo-darwin-x64@0.36.1"
+  - "@effect/tsgo-linux-arm64@0.36.1"
+  - "@effect/tsgo-linux-arm@0.36.1"
+  - "@effect/tsgo-linux-x64@0.36.1"
+  - "@effect/tsgo-win32-arm64@0.36.1"
+  - "@effect/tsgo-win32-x64@0.36.1"
+  - "@effect/tsgo@0.36.1"
 patchedDependencies:
   alchemy@2.0.0-beta.65: patches/alchemy@2.0.0-beta.65.patch

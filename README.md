@@ -193,6 +193,12 @@ Local checks:
 pnpm run check
 ```
 
+`pnpm run lint` runs type-aware Oxlint with TypeScript and Effect diagnostics.
+`pnpm install` patches Oxlint with `@effect/tsgo`; keep the exact
+`@effect/tsgo`, `typescript`, `oxlint`, and `oxlint-tsgolint` versions aligned.
+TypeScript remains an unpatched, typecheck-only path so Effect diagnostics are
+not reported twice.
+
 Infra deploy test:
 
 ```bash
