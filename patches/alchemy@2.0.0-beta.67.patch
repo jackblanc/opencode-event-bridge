@@ -115,10 +115,10 @@ index 7d8fd40f59b9f3b009d9b8334f6b478d0be9b82b..ac2722779e0de10b5f4afed4b4445e62
  export * from "./VpcServiceRef.js";
  //# sourceMappingURL=index.js.map
 diff --git a/lib/Cloudflare/Workers/Worker.d.ts b/lib/Cloudflare/Workers/Worker.d.ts
-index 376f0588d7dc7becff7b1720ef688d51bab14a5d..89a4a6ce097b4b4f13d13c501532d311f8b988c8 100644
+index ac1bfdf6826956d104a15937717106169055b318..4c44fa70a65ca23ac27537e9ee01e5e426f97538 100644
 --- a/lib/Cloudflare/Workers/Worker.d.ts
 +++ b/lib/Cloudflare/Workers/Worker.d.ts
-@@ -1057,7 +1057,7 @@ export declare const Worker: ResourceClassLike<Worker> & Effect.Effect<Worker &
+@@ -1635,7 +1635,7 @@ export declare const Worker: ResourceClassLike<Worker> & Effect.Effect<Worker &
          };
      };
      <Self>(): {
@@ -126,7 +126,7 @@ index 376f0588d7dc7becff7b1720ef688d51bab14a5d..89a4a6ce097b4b4f13d13c501532d311
 +        <const Id extends string, Shape extends WorkerShape, PropsReq = never, Req extends WorkerServices | Container.Application<any> | PlatformServices | Tag = never>(id: Id, props: InputProps<WorkerProps> | Effect.Effect<InputProps<WorkerProps>, ConfigError, PropsReq>, impl: Effect.Effect<Shape, ConfigError, Req>): Effect.Effect<Worker & Rpc<Self>, never, PropsReq | Extract<Req, Container.Application<any>> | Providers> & Named<Id> & {
              new (): MakeShape<Shape, WorkerShape> & Named<Id> & Tag;
          };
-     };
+         /**
 diff --git a/src/Cloudflare/VpcService/VpcServiceBinding.ts b/src/Cloudflare/VpcService/VpcServiceBinding.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..e7cbed4a8440790fe386c09e8c45a3729ff63f97
@@ -259,10 +259,10 @@ index 0b8bbc0a93657512d082a9315b2ba37b5790c022..135b23fcb5b91cb149f1d18532475a90
 +export * from "./VpcServiceBinding.ts";
  export * from "./VpcServiceRef.ts";
 diff --git a/src/Cloudflare/Workers/Worker.ts b/src/Cloudflare/Workers/Worker.ts
-index a1fa062fa77e433d1d5639ce3ce9a30793ba0a93..73bae5e8c0c507633c6473a679eec534df0b7592 100644
+index 7aacab7725904d040d52f55136e01ee320c26b00..791beeff0ab413082a7b2b5999d3c90e18074334 100644
 --- a/src/Cloudflare/Workers/Worker.ts
 +++ b/src/Cloudflare/Workers/Worker.ts
-@@ -1265,19 +1265,22 @@ export const Worker: ResourceClassLike<Worker> &
+@@ -1882,19 +1882,22 @@ export const Worker: ResourceClassLike<Worker> &
        <
          const Id extends string,
          Shape extends WorkerShape,

@@ -3,7 +3,8 @@ allowBuilds:
   msgpackr-extract: true
   workerd: true
 minimumReleaseAgeExclude:
-  - alchemy@2.0.0-beta.65
+  - alchemy@2.0.0-beta.67
+  - "@opencode-ai/sdk@1.18.15"
   - "@effect/tsgo-darwin-arm64@0.36.1"
   - "@effect/tsgo-darwin-x64@0.36.1"
   - "@effect/tsgo-linux-arm64@0.36.1"
@@ -13,4 +14,4 @@ minimumReleaseAgeExclude:
   - "@effect/tsgo-win32-x64@0.36.1"
   - "@effect/tsgo@0.36.1"
 patchedDependencies:
-  alchemy@2.0.0-beta.65: patches/alchemy@2.0.0-beta.65.patch
+  alchemy@2.0.0-beta.67: patches/alchemy@2.0.0-beta.67.patch

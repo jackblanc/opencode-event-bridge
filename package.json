@@ -23,7 +23,7 @@
     "@effect/platform-browser": "4.0.0-beta.102",
     "@effect/platform-node": "4.0.0-beta.102",
     "@opencode-ai/sdk": "^1.18.15",
-    "alchemy": "2.0.0-beta.65",
+    "alchemy": "2.0.0-beta.67",
     "effect": "4.0.0-beta.102"
   },
   "devDependencies": {
